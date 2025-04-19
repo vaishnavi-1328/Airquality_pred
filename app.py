@@ -19,7 +19,7 @@ st.title("Air Quality Index (AQI) Dashboard")
 st.markdown("---")
 
 # Horizontal tab navigation
-tabs = st.tabs(["Home", "EDA", "Feature Importance", "PCA", "Model Metrics", "Residual Comparison"])
+tabs = st.tabs(["Home", "EDA", "Feature Importance", "PCA", "Model Metrics", "Model Comparison"])
 
 # Sidebar for uploading dataset
 st.sidebar.title("Upload Dataset")
@@ -143,6 +143,7 @@ if uploaded_file is not None:
 
         results = []
         preds = {}
+        full_comparison_df = pd.DataFrame()
 
         for name, model in models.items():
             model.fit(X_train, y_train)
@@ -152,6 +153,15 @@ if uploaded_file is not None:
             mae = mean_absolute_error(y_test, y_pred)
             r2 = r2_score(y_test, y_pred)
             results.append({"Model": name, "RMSE": rmse, "MAE": mae, "R2": r2})
+            temp_df = pd.DataFrame({
+                "Actual": y_test,
+                "Predicted": y_pred,
+                "Model": name,
+                "AQI_Category": pd.cut(y_test, bins=[0, 50, 100, 150, 200, 300, 500],
+                    labels=["Good", "Moderate", "Unhealthy for Sensitive Groups",
+                            "Unhealthy", "Very Unhealthy", "Hazardous"])
+            })
+            full_comparison_df = pd.concat([full_comparison_df, temp_df], ignore_index=True)
 
         results_df = pd.DataFrame(results).sort_values(by="R2", ascending=False)
         st.dataframe(results_df)
@@ -162,21 +172,13 @@ if uploaded_file is not None:
         href = f'<a href="data:file/csv;base64,{b64}" download="cleaned_data.csv">Download Cleaned Dataset</a>'
         st.markdown(href, unsafe_allow_html=True)
 
-    # RESIDUAL PLOT TAB
+    # MODEL COMPARISON TAB
     with tabs[5]:
-        st.subheader("Residual Plots with AQI Category")
-        for name in preds:
-            y_test_vals, y_pred_vals = preds[name]
-            comparison_df = pd.DataFrame({
-                "Actual": y_test_vals,
-                "Predicted": y_pred_vals,
-                "AQI_Category": pd.cut(y_test_vals, bins=[0, 50, 100, 150, 200, 300, 500],
-                                       labels=["Good", "Moderate", "Unhealthy for Sensitive Groups",
-                                               "Unhealthy", "Very Unhealthy", "Hazardous"])
-            })
-            fig = px.scatter(comparison_df, x="Actual", y="Predicted", color="AQI_Category",
-                             title=f"{name} Residual Plot by AQI Category")
-            st.plotly_chart(fig)
+        st.subheader("Combined Model Comparison")
+        if not full_comparison_df.empty:
+            fig_all = px.scatter(full_comparison_df, x="Actual", y="Predicted", color="Model", symbol="AQI_Category",
+                                 title="Actual vs Predicted AQI - All Models")
+            st.plotly_chart(fig_all)
 
 else:
     st.warning("Please upload a CSV file using the sidebar.")
