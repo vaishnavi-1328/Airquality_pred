@@ -13,6 +13,8 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.linear_model import LinearRegression
 import plotly.express as px
 import base64
+from matplotlib.backends.backend_pdf import PdfPages
+import io
 
 st.set_page_config(layout="wide")
 st.title("Air Quality Index (AQI) Dashboard")
@@ -98,6 +100,15 @@ if uploaded_file is not None:
         plt.tight_layout()
         st.pyplot(fig)
 
+        st.subheader("Bivariate Scatter Plots")
+        bivariate_cols = valid_cols[:10]
+        fig_bi, axes_bi = plt.subplots(2, 5, figsize=(30, 10))
+        axes_bi = axes_bi.flatten()
+        for idx, col in enumerate(bivariate_cols):
+            sns.scatterplot(x=col, y="AQI_PM2.5", data=df_clean, ax=axes_bi[idx])
+            axes_bi[idx].set_title(f'{col} vs AQI_PM2.5')
+        st.pyplot(fig_bi)
+
         st.subheader("Boxplots by AQI Category")
         fig2, axes2 = plt.subplots(1, 3, figsize=(24, 6))
         sns.boxplot(x="AQI_Category", y="PM2.5", data=df, ax=axes2[0])
@@ -111,4 +122,35 @@ if uploaded_file is not None:
         pairplot_fig = sns.pairplot(pairplot_data, hue="AQI_Category")
         st.pyplot(pairplot_fig)
 
-    # Remaining tabs unchanged...
+        st.subheader("Residual Histograms (Sample Models)")
+        fig_resid, ax_resid = plt.subplots(1, 2, figsize=(15, 5))
+        sample_models = {
+            "Random Forest": RandomForestRegressor(),
+            "XGBoost": XGBRegressor()
+        }
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        for i, (name, model) in enumerate(sample_models.items()):
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            residuals = y_test - y_pred
+            sns.histplot(residuals, bins=30, kde=True, ax=ax_resid[i])
+            ax_resid[i].set_title(f'{name} Residuals')
+        st.pyplot(fig_resid)
+
+        st.subheader("Correlation Heatmap")
+        corr = df_clean.corr()
+        fig_corr, ax_corr = plt.subplots(figsize=(12, 10))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax_corr)
+        st.pyplot(fig_corr)
+
+        st.subheader("Download All EDA Plots as PDF")
+        pdf_buffer = io.BytesIO()
+        with PdfPages(pdf_buffer) as pdf:
+            pdf.savefig(fig)
+            pdf.savefig(fig_bi)
+            pdf.savefig(fig2)
+            pdf.savefig(pairplot_fig.fig)
+            pdf.savefig(fig_resid)
+            pdf.savefig(fig_corr)
+
+        st.download_button("Download EDA Plots PDF", data=pdf_buffer.getvalue(), file_name="eda_plots.pdf", mime="application/pdf")
