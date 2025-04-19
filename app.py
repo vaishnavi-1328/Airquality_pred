@@ -119,9 +119,16 @@ if uploaded_file:
             model_scores[name] = acc
             st.subheader(f"🔹 {name} - Accuracy: {acc:.2f}")
             st.text(classification_report(y_test, y_pred, target_names=le.classes_))
+
             cm = confusion_matrix(y_test, y_pred)
-            fig, ax = plt.subplots()
-            ConfusionMatrixDisplay(cm, display_labels=le.classes_).plot(ax=ax)
+            fig, ax = plt.subplots(figsize=(8, 6))
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
+            disp.plot(ax=ax, cmap='viridis', colorbar=True)
+            plt.xticks(fontsize=10)
+            plt.yticks(fontsize=10)
+            plt.xlabel("Predicted label", fontsize=12)
+            plt.ylabel("True label", fontsize=12)
+            plt.title(f"{name} - Confusion Matrix", fontsize=14)
             st.pyplot(fig)
 
     with tabs[4]:
