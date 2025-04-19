@@ -124,11 +124,11 @@ if uploaded_file:
             fig, ax = plt.subplots(figsize=(8, 6))
             disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
             disp.plot(ax=ax, cmap='viridis', colorbar=True)
-            plt.xticks(fontsize=10)
-            plt.yticks(fontsize=10)
-            plt.xlabel("Predicted label", fontsize=12)
-            plt.ylabel("True label", fontsize=12)
-            plt.title(f"{name} - Confusion Matrix", fontsize=14)
+            plt.xticks(rotation=30, ha='right', fontsize=8)
+            plt.yticks(fontsize=8)
+            plt.xlabel("Predicted label", fontsize=10)
+            plt.ylabel("True label", fontsize=10)
+            plt.title(f"{name} - Confusion Matrix", fontsize=12)
             st.pyplot(fig)
 
     with tabs[4]:
