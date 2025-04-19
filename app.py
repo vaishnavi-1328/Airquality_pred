@@ -20,10 +20,8 @@ st.set_page_config(layout="wide")
 st.title("Air Quality Index (AQI) Dashboard")
 st.markdown("---")
 
-# Horizontal tab navigation
 tabs = st.tabs(["Home", "EDA", "Feature Importance", "PCA", "Model Metrics", "Model Comparison"])
 
-# Sidebar for uploading dataset
 st.sidebar.title("Upload Dataset")
 uploaded_file = st.sidebar.file_uploader("Upload CSV File", type="csv")
 
@@ -72,8 +70,7 @@ if uploaded_file is not None:
         filter_mask = ~((numeric_data < (Q1 - 1.5 * IQR)) | (numeric_data > (Q3 + 1.5 * IQR))).any(axis=1)
         return data[filter_mask]
 
-    df_clean = remove_outliers_iqr(df)
-    df_clean = df_clean.dropna(subset=["AQI_PM2.5"])
+    df_clean = remove_outliers_iqr(df).dropna(subset=["AQI_PM2.5"])
     X = df_clean.select_dtypes(include=np.number).drop(columns=["AQI_PM2.5"])
     y = df_clean["AQI_PM2.5"]
 
@@ -93,20 +90,15 @@ if uploaded_file is not None:
         for idx, col in enumerate(valid_cols):
             sns.histplot(X[col].dropna(), kde=True, bins=50, ax=axes[idx])
             axes[idx].set_title(f'Distribution of {col}')
-            axes[idx].set_xlabel(col)
-            axes[idx].set_ylabel('Frequency')
         for i in range(len(valid_cols), len(axes)):
             fig.delaxes(axes[i])
-        plt.tight_layout()
         st.pyplot(fig)
 
         st.subheader("Bivariate Scatter Plots")
-        bivariate_cols = valid_cols[:10]
         fig_bi, axes_bi = plt.subplots(2, 5, figsize=(30, 10))
-        axes_bi = axes_bi.flatten()
-        for idx, col in enumerate(bivariate_cols):
-            sns.scatterplot(x=col, y="AQI_PM2.5", data=df_clean, ax=axes_bi[idx])
-            axes_bi[idx].set_title(f'{col} vs AQI_PM2.5')
+        for idx, col in enumerate(valid_cols[:10]):
+            sns.scatterplot(x=col, y="AQI_PM2.5", data=df_clean, ax=axes_bi.flatten()[idx])
+            axes_bi.flatten()[idx].set_title(f'{col} vs AQI_PM2.5')
         st.pyplot(fig_bi)
 
         st.subheader("Boxplots by AQI Category")
@@ -117,28 +109,13 @@ if uploaded_file is not None:
         st.pyplot(fig2)
 
         st.subheader("Pairplot of Important Features")
-        selected_features = ["PM2.5", "SO2", "NO2", "WS", "AQI_PM2.5"]
-        pairplot_data = df[selected_features + ["AQI_Category"]]
+        pairplot_data = df[["PM2.5", "SO2", "NO2", "WS", "AQI_PM2.5", "AQI_Category"]]
         pairplot_fig = sns.pairplot(pairplot_data, hue="AQI_Category")
         st.pyplot(pairplot_fig)
 
-        st.subheader("Residual Histograms (Sample Models)")
-        fig_resid, ax_resid = plt.subplots(1, 2, figsize=(15, 5))
-        sample_models = {
-            "Random Forest": RandomForestRegressor(),
-            "XGBoost": XGBRegressor()
-        }
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        for i, (name, model) in enumerate(sample_models.items()):
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
-            residuals = y_test - y_pred
-            sns.histplot(residuals, bins=30, kde=True, ax=ax_resid[i])
-            ax_resid[i].set_title(f'{name} Residuals')
-        st.pyplot(fig_resid)
-
         st.subheader("Correlation Heatmap")
-        corr = df_clean.corr()
+        numeric_cols = df_clean.select_dtypes(include=[np.number])
+        corr = numeric_cols.corr()
         fig_corr, ax_corr = plt.subplots(figsize=(12, 10))
         sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax_corr)
         st.pyplot(fig_corr)
@@ -150,7 +127,31 @@ if uploaded_file is not None:
             pdf.savefig(fig_bi)
             pdf.savefig(fig2)
             pdf.savefig(pairplot_fig.fig)
-            pdf.savefig(fig_resid)
             pdf.savefig(fig_corr)
-
         st.download_button("Download EDA Plots PDF", data=pdf_buffer.getvalue(), file_name="eda_plots.pdf", mime="application/pdf")
+
+    # MODEL TABS...
+    # Your Feature Importance, PCA, Model Metrics, and Model Comparison tabs follow this
+
+    # Add residual histograms in last tab
+    with tabs[5]:
+        st.subheader("Residual Histograms (All Models)")
+        all_models = {
+            "Random Forest": RandomForestRegressor(),
+            "XGBoost": XGBRegressor(),
+            "Decision Tree": DecisionTreeRegressor(),
+            "Gradient Boosting": GradientBoostingRegressor(),
+            "Linear Regression": LinearRegression()
+        }
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        fig_resid_all, axes_resid_all = plt.subplots(1, len(all_models), figsize=(6 * len(all_models), 5))
+        if len(all_models) == 1:
+            axes_resid_all = [axes_resid_all]
+        for i, (name, model) in enumerate(all_models.items()):
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            residuals = y_test - y_pred
+            sns.histplot(residuals, bins=30, kde=True, ax=axes_resid_all[i])
+            axes_resid_all[i].set_title(f'{name} Residuals')
+        plt.tight_layout()
+        st.pyplot(fig_resid_all)
