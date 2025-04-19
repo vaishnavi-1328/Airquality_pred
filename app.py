@@ -14,11 +14,12 @@ from sklearn.linear_model import LinearRegression
 import plotly.express as px
 import base64
 
-# Top menu style navigation
 st.set_page_config(layout="wide")
 st.title("Air Quality Index (AQI) Dashboard")
 st.markdown("---")
-page = st.selectbox("Navigate to Section:", ["Home", "EDA", "Feature Importance", "PCA", "Model Comparison"])
+
+# Horizontal tab navigation
+tabs = st.tabs(["Home", "EDA", "Feature Importance", "PCA", "Model Comparison"])
 
 # Sidebar for uploading dataset
 st.sidebar.title("Upload Dataset")
@@ -76,12 +77,12 @@ if uploaded_file is not None:
     y = df_clean["AQI_PM2.5"]
 
     # HOME
-    if page == "Home":
+    with tabs[0]:
         st.subheader("Dataset Preview")
         st.dataframe(df.head())
 
     # EDA
-    elif page == "EDA":
+    with tabs[1]:
         st.subheader("Distribution of Variables")
         valid_cols = [col for col in X.columns if X[col].notna().sum() > 0]
         n_cols = 5
@@ -108,7 +109,7 @@ if uploaded_file is not None:
         st.pyplot(pairplot_fig)
 
     # FEATURE IMPORTANCE
-    elif page == "Feature Importance":
+    with tabs[2]:
         st.subheader("Feature Importance using Random Forest")
         model = RandomForestRegressor()
         model.fit(X, y)
@@ -118,7 +119,7 @@ if uploaded_file is not None:
         st.bar_chart(importance_df.set_index("Feature"))
 
     # PCA
-    elif page == "PCA":
+    with tabs[3]:
         st.subheader("PCA - Principal Component Analysis")
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X)
@@ -128,7 +129,7 @@ if uploaded_file is not None:
         st.plotly_chart(fig2)
 
     # MODEL COMPARISON
-    elif page == "Model Comparison":
+    with tabs[4]:
         st.subheader("Model Comparison and Evaluation")
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
