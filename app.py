@@ -164,13 +164,19 @@ if uploaded_file is not None:
 
     # RESIDUAL PLOT TAB
     with tabs[5]:
-        st.subheader("Residual Plots for All Models")
+        st.subheader("Residual Plots with AQI Category")
         for name in preds:
             y_test_vals, y_pred_vals = preds[name]
-            fig_res = px.scatter(x=y_test_vals, y=y_pred_vals,
-                                 labels={"x": "Actual AQI", "y": "Predicted AQI"},
-                                 title=f"{name} Residual Plot")
-            st.plotly_chart(fig_res)
+            comparison_df = pd.DataFrame({
+                "Actual": y_test_vals,
+                "Predicted": y_pred_vals,
+                "AQI_Category": pd.cut(y_test_vals, bins=[0, 50, 100, 150, 200, 300, 500],
+                                       labels=["Good", "Moderate", "Unhealthy for Sensitive Groups",
+                                               "Unhealthy", "Very Unhealthy", "Hazardous"])
+            })
+            fig = px.scatter(comparison_df, x="Actual", y="Predicted", color="AQI_Category",
+                             title=f"{name} Residual Plot by AQI Category")
+            st.plotly_chart(fig)
 
 else:
     st.warning("Please upload a CSV file using the sidebar.")
