@@ -19,7 +19,7 @@ st.title("Air Quality Index (AQI) Dashboard")
 st.markdown("---")
 
 # Horizontal tab navigation
-tabs = st.tabs(["Home", "EDA", "Feature Importance", "PCA", "Model Comparison"])
+tabs = st.tabs(["Home", "EDA", "Feature Importance", "PCA", "Model Metrics", "Residual Comparison"])
 
 # Sidebar for uploading dataset
 st.sidebar.title("Upload Dataset")
@@ -128,9 +128,9 @@ if uploaded_file is not None:
         fig2 = px.scatter(pca_df, x="PC1", y="PC2", color="AQI_Category")
         st.plotly_chart(fig2)
 
-    # MODEL COMPARISON
+    # MODEL METRICS TAB
     with tabs[4]:
-        st.subheader("Model Comparison and Evaluation")
+        st.subheader("Model Performance Metrics")
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
         models = {
@@ -141,22 +141,36 @@ if uploaded_file is not None:
             "Linear Regression": LinearRegression()
         }
 
+        results = []
+        preds = {}
+
         for name, model in models.items():
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
-            st.write(f"### {name} Results")
+            preds[name] = (y_test, y_pred)
             rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-            st.write("RMSE: {:.2f}".format(rmse))
-            st.write("MAE: {:.2f}".format(mean_absolute_error(y_test, y_pred)))
-            st.write("R²: {:.2f}".format(r2_score(y_test, y_pred)))
-            fig_res = px.scatter(x=y_test, y=y_pred, labels={"x": "Actual AQI", "y": "Predicted AQI"}, title=f"{name} Residual Plot")
-            st.plotly_chart(fig_res)
+            mae = mean_absolute_error(y_test, y_pred)
+            r2 = r2_score(y_test, y_pred)
+            results.append({"Model": name, "RMSE": rmse, "MAE": mae, "R2": r2})
+
+        results_df = pd.DataFrame(results).sort_values(by="R2", ascending=False)
+        st.dataframe(results_df)
 
         st.subheader("Download Cleaned Data")
         csv = df_clean.to_csv(index=False)
         b64 = base64.b64encode(csv.encode()).decode()
         href = f'<a href="data:file/csv;base64,{b64}" download="cleaned_data.csv">Download Cleaned Dataset</a>'
         st.markdown(href, unsafe_allow_html=True)
+
+    # RESIDUAL PLOT TAB
+    with tabs[5]:
+        st.subheader("Residual Plots for All Models")
+        for name in preds:
+            y_test_vals, y_pred_vals = preds[name]
+            fig_res = px.scatter(x=y_test_vals, y=y_pred_vals,
+                                 labels={"x": "Actual AQI", "y": "Predicted AQI"},
+                                 title=f"{name} Residual Plot")
+            st.plotly_chart(fig_res)
 
 else:
     st.warning("Please upload a CSV file using the sidebar.")
