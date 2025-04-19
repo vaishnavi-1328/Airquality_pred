@@ -3,126 +3,111 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.preprocessing import PolynomialFeatures
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.tree import DecisionTreeRegressor
-from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+import plotly.express as px
 
-st.set_page_config(page_title='AQI PM2.5 Analysis', layout='wide')
+# Title
+st.title("Air Quality Index (AQI) Analysis App")
 
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Upload & Preview", "Preprocessing", "EDA", "Modeling & Results"])
+# Load dataset
+uploaded_file = st.file_uploader("Upload CSV File", type="csv")
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
 
-if page == "Upload & Preview":
-    st.title("📄 Upload and Preview Dataset")
-    data = st.file_uploader("Upload your CSV file", type=['csv'])
-    if data is not None:
-        df = pd.read_csv(data)
-        st.session_state['df'] = df
-        st.dataframe(df.head())
+    st.subheader("Raw Dataset")
+    st.dataframe(df.head())
 
-elif page == "Preprocessing":
-    st.title("🛠️ Preprocessing")
-    if 'df' in st.session_state:
-        df = st.session_state['df']
-        Q1 = df.quantile(0.25)
-        Q3 = df.quantile(0.75)
-        IQR = Q3 - Q1
-        df_clean = df[~((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR))).any(axis=1)]
-        st.session_state['df_clean'] = df_clean
+    # Feature Engineering
+    st.subheader("Feature Engineering")
+    df["pollutionRatio"] = df["Benzene"] / df["Toluene"]
+    df["NO*WS"] = df["NO"] * df["WS"]
 
-        st.write(f"Original shape: {df.shape}, After outlier removal: {df_clean.shape}")
+    # AQI Calculation Logic
+    breakpoints_pm25 = [
+        (0.0, 9.0, 0, 50),
+        (9.1, 35.4, 51, 100),
+        (35.5, 55.4, 101, 150),
+        (55.5, 125.4, 151, 200),
+        (125.5, 225.4, 201, 300),
+        (225.5, 500.4, 301, 500)
+    ]
 
-        scaler = StandardScaler()
-        df_scaled = scaler.fit_transform(df_clean.dropna())
-        df_scaled = pd.DataFrame(df_scaled, columns=df_clean.columns)
-        st.session_state['df_scaled'] = df_scaled
-        st.dataframe(df_scaled.head())
+    def calculate_aqi(concentration, breakpoints):
+        for bp_lo, bp_hi, i_lo, i_hi in breakpoints:
+            if bp_lo <= concentration <= bp_hi:
+                return round(((i_hi - i_lo) / (bp_hi - bp_lo)) * (concentration - bp_lo) + i_lo)
+        return None
 
-        st.subheader("📌 Feature Importance")
-        X_feat = df_clean.drop(columns=['PM2.5'])
-        y_feat = df_clean['PM2.5']
-        rf_feat = RandomForestRegressor()
-        rf_feat.fit(X_feat, y_feat)
-        importances = rf_feat.feature_importances_
-        feat_imp = pd.Series(importances, index=X_feat.columns).sort_values(ascending=False)
-        fig_fi, ax_fi = plt.subplots()
-        sns.barplot(x=feat_imp.values, y=feat_imp.index, ax=ax_fi)
-        ax_fi.set_title("Feature Importance - Random Forest")
-        st.pyplot(fig_fi)
-    else:
-        st.warning("Please upload and preview the dataset first.")
+    def categorize_aqi(aqi):
+        if aqi <= 50:
+            return "Good"
+        elif aqi <= 100:
+            return "Moderate"
+        elif aqi <= 150:
+            return "Unhealthy for Sensitive Groups"
+        elif aqi <= 200:
+            return "Unhealthy"
+        elif aqi <= 300:
+            return "Very Unhealthy"
+        else:
+            return "Hazardous"
 
-elif page == "EDA":
-    st.title("🔍 Exploratory Data Analysis")
-    if 'df_clean' in st.session_state:
-        df_clean = st.session_state['df_clean']
+    df["AQI_PM2.5"] = df["PM2.5"].apply(lambda x: calculate_aqi(x, breakpoints_pm25))
+    df["AQI_Category"] = df["AQI_PM2.5"].apply(categorize_aqi)
 
-        st.subheader("Descriptive Statistics")
-        st.write(df_clean.describe())
+    st.write("AQI Calculation Completed")
+    st.dataframe(df[["PM2.5", "AQI_PM2.5", "AQI_Category"]].head())
 
-        st.subheader("Missing Values")
-        st.write(df_clean.isnull().sum())
+    # Exploratory Data Analysis
+    st.subheader("Exploratory Data Analysis (EDA)")
+    selected_features = st.multiselect("Select features for bivariate plots:", df.columns.tolist())
+    if len(selected_features) >= 2:
+        fig = px.scatter(df, x=selected_features[0], y=selected_features[1], color="AQI_Category")
+        st.plotly_chart(fig)
 
-        st.subheader("📊 Bivariate Analysis")
-        selected_features = st.multiselect("Select features to plot vs PM2.5", df_clean.columns.tolist())
-        for feature in selected_features:
-            fig, ax = plt.subplots()
-            sns.scatterplot(x=df_clean[feature], y=df_clean['PM2.5'], ax=ax)
-            ax.set_title(f'{feature} vs PM2.5')
-            st.pyplot(fig)
+    # Feature Importance using Random Forest
+    st.subheader("Feature Importance (Random Forest)")
+    df_clean = df.dropna()
+    X = df_clean.select_dtypes(include=np.number).drop(columns=["AQI_PM2.5"])
+    y = df_clean["AQI_PM2.5"]
+    model = RandomForestRegressor()
+    model.fit(X, y)
+    importance = model.feature_importances_
+    importance_df = pd.DataFrame({"Feature": X.columns, "Importance": importance}).sort_values(by="Importance", ascending=False)
+    st.dataframe(importance_df)
+    st.bar_chart(importance_df.set_index("Feature"))
 
-        st.subheader("🧩 Multivariate Correlation Heatmap")
-        fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
-        sns.heatmap(df_clean.corr(), annot=True, cmap='coolwarm', ax=ax_corr)
-        st.pyplot(fig_corr)
+    # PCA
+    st.subheader("Principal Component Analysis (PCA)")
+    pca = PCA(n_components=2)
+    X_pca = pca.fit_transform(X)
+    pca_df = pd.DataFrame(X_pca, columns=["PC1", "PC2"])
+    pca_df["AQI_Category"] = df_clean["AQI_Category"].values
+    fig2 = px.scatter(pca_df, x="PC1", y="PC2", color="AQI_Category")
+    st.plotly_chart(fig2)
 
-        st.subheader("🧬 Principal Component Analysis (PCA)")
-        df_scaled = st.session_state['df_scaled']
-        pca = PCA(n_components=2)
-        pca_result = pca.fit_transform(df_scaled)
-        st.write("Explained Variance Ratio:", pca.explained_variance_ratio_)
-        fig_pca, ax_pca = plt.subplots()
-        ax_pca.scatter(pca_result[:, 0], pca_result[:, 1], alpha=0.6)
-        ax_pca.set_xlabel('PCA 1')
-        ax_pca.set_ylabel('PCA 2')
-        ax_pca.set_title('PCA - 2D Projection')
-        st.pyplot(fig_pca)
-    else:
-        st.warning("Please go to Preprocessing to prepare data.")
+    # Model Comparison
+    st.subheader("Model Comparison")
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-elif page == "Modeling & Results":
-    st.title("🤖 Modeling and Results")
-    if 'df_clean' in st.session_state:
-        df_clean = st.session_state['df_clean']
-        X = df_clean.drop(columns=['PM2.5'])
-        y = df_clean['PM2.5']
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    models = {
+        "Random Forest": RandomForestRegressor(),
+        "XGBoost": XGBRegressor(),
+    }
 
-        models = {
-            'Random Forest': RandomForestRegressor(),
-            'Decision Tree': DecisionTreeRegressor(),
-            'XGBoost': XGBRegressor()
-        }
-
-        for name, model in models.items():
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
-            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-            mae = mean_absolute_error(y_test, y_pred)
-            r2 = r2_score(y_test, y_pred)
-
-            st.subheader(f"📈 {name}")
-            st.write(f"RMSE: {rmse:.2f}, MAE: {mae:.2f}, R²: {r2:.2f}")
-
-            fig_res, ax_res = plt.subplots()
-            sns.residplot(x=y_test, y=y_pred, lowess=True, ax=ax_res, line_kws={'color': 'red'})
-            ax_res.set_title(f"Residual Plot - {name}")
-            ax_res.set_xlabel("Actual PM2.5")
-            ax_res.set_ylabel("Residuals")
-            st.pyplot(fig_res)
-    else:
-        st.warning("Please go to Preprocessing to prepare data.")
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        st.write(f"### {name} Results")
+        st.write(f"RMSE: {mean_squared_error(y_test, y_pred, squared=False):.2f}")
+        st.write(f"MAE: {mean_absolute_error(y_test, y_pred):.2f}")
+        st.write(f"R²: {r2_score(y_test, y_pred):.2f}")
+        fig_res = px.scatter(x=y_test, y=y_pred, labels={"x": "Actual AQI", "y": "Predicted AQI"}, title=f"{name} Residual Plot")
+        st.plotly_chart(fig_res)
