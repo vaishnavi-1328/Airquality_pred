@@ -62,17 +62,15 @@ if uploaded_file is not None:
     df["AQI_PM2.5"] = df["PM2.5"].apply(lambda x: calculate_aqi(x, breakpoints_pm25))
     df["AQI_Category"] = df["AQI_PM2.5"].apply(categorize_aqi)
 
-    df_clean = df.dropna()
-    X = df_clean.select_dtypes(include=np.number).drop(columns=["AQI_PM2.5"])
-    y = df_clean["AQI_PM2.5"]
-
     def remove_outliers_iqr(data):
-        Q1 = data.quantile(0.25)
-        Q3 = data.quantile(0.75)
+        numeric_data = data.select_dtypes(include=[np.number])
+        Q1 = numeric_data.quantile(0.25)
+        Q3 = numeric_data.quantile(0.75)
         IQR = Q3 - Q1
-        return data[~((data < (Q1 - 1.5 * IQR)) | (data > (Q3 + 1.5 * IQR))).any(axis=1)]
+        filter_mask = ~((numeric_data < (Q1 - 1.5 * IQR)) | (numeric_data > (Q3 + 1.5 * IQR))).any(axis=1)
+        return data[filter_mask]
 
-    df_clean = remove_outliers_iqr(df_clean)
+    df_clean = remove_outliers_iqr(df)
     X = df_clean.select_dtypes(include=np.number).drop(columns=["AQI_PM2.5"])
     y = df_clean["AQI_PM2.5"]
 
