@@ -25,10 +25,11 @@ if uploaded_file:
 
     with tabs[0]:
         st.header("📊 Project Overview")
-        st.write("This web application calculates AQI from PM2.5, performs feature engineering, visualizes PCA, and trains multiple ML models.")
+        st.write("This app calculates AQI from PM2.5, performs feature engineering, visualizes PCA, and trains ML models.")
         st.subheader("Raw Dataset Preview")
         st.dataframe(df.head())
 
+    # AQI Calculation
     breakpoints_pm25 = [
         (0.0, 9.0, 0, 50), (9.1, 35.4, 51, 100), (35.5, 55.4, 101, 150),
         (55.5, 125.4, 151, 200), (125.5, 225.4, 201, 300), (225.5, 500.4, 301, 500)
@@ -61,18 +62,30 @@ if uploaded_file:
 
     with tabs[1]:
         st.header("⚙️ Feature Engineering and Normalization")
-        df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
-        df['NO*WS'] = df['NO'] * df['WS']
-        df['SO2*TEMP'] = df['SO2'] * df['TEMP']
-        df['O3*RH'] = df['O3'] * df['RH']
-        df['NO2/CO'] = df['NO2'] / (df['CO'] + 1e-5)
-        df['NOx/NO'] = df['NOx'] / (df['NO'] + 1e-5)
+
+        # Only compute if columns exist
+        if 'Benzene' in df.columns and 'Toluene' in df.columns:
+            df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
+        if 'NO' in df.columns and 'WS' in df.columns:
+            df['NO*WS'] = df['NO'] * df['WS']
+        if 'SO2' in df.columns and 'TEMP' in df.columns:
+            df['SO2*TEMP'] = df['SO2'] * df['TEMP']
+        if 'O3' in df.columns and 'RH' in df.columns:
+            df['O3*RH'] = df['O3'] * df['RH']
+        if 'NO2' in df.columns and 'CO' in df.columns:
+            df['NO2/CO'] = df['NO2'] / (df['CO'] + 1e-5)
+        if 'NOx' in df.columns and 'NO' in df.columns:
+            df['NOx/NO'] = df['NOx'] / (df['NO'] + 1e-5)
+
         df_clean = df.dropna()
-        st.success("New Features Added: pollutionRatio, NO*WS, SO2*TEMP, O3*RH, NO2/CO, NOx/NO")
+        st.success("Feature engineering completed on available columns.")
         st.dataframe(df_clean.describe())
 
+    # Define target and features
     y = df_clean['AQI_Category']
     X = df_clean.drop(columns=['AQI_PM2.5', 'AQI_Category'])
+
+    # Normalization
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
@@ -85,6 +98,7 @@ if uploaded_file:
         fig = px.scatter(pca_df, x='PC1', y='PC2', color='AQI_Category', title="PCA - 2D Projection")
         st.plotly_chart(fig)
 
+    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
 
     with tabs[3]:
@@ -119,4 +133,4 @@ if uploaded_file:
         st.bar_chart(importance.sort_values(ascending=False))
 
 else:
-    st.warning("Please upload a CSV file with PM2.5 and air quality features to begin.")
+    st.warning("Please upload a CSV file with PM2.5 and related air quality columns to begin.")
