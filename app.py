@@ -8,7 +8,7 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score, classification_report, ConfusionMatrixDisplay, confusion_matrix
 import plotly.express as px
@@ -63,7 +63,6 @@ if uploaded_file:
     with tabs[1]:
         st.header("⚙️ Feature Engineering and Normalization")
 
-        # Only compute if columns exist
         if 'Benzene' in df.columns and 'Toluene' in df.columns:
             df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
         if 'NO' in df.columns and 'WS' in df.columns:
@@ -81,11 +80,12 @@ if uploaded_file:
         st.success("Feature engineering completed on available columns.")
         st.dataframe(df_clean.describe())
 
-    # Define target and features
+    # Label encode the target variable
     y = df_clean['AQI_Category']
-    X = df_clean.drop(columns=['AQI_PM2.5', 'AQI_Category'])
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
 
-    # Normalization
+    X = df_clean.drop(columns=['AQI_PM2.5', 'AQI_Category'])
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
@@ -99,10 +99,11 @@ if uploaded_file:
         st.plotly_chart(fig)
 
     # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_encoded, test_size=0.3, random_state=42)
 
     with tabs[3]:
         st.header("🤖 Model Training")
+
         models = {
             "Naive Bayes": GaussianNB(),
             "Decision Tree": DecisionTreeClassifier(random_state=42),
@@ -117,10 +118,10 @@ if uploaded_file:
             acc = accuracy_score(y_test, y_pred)
             model_scores[name] = acc
             st.subheader(f"🔹 {name} - Accuracy: {acc:.2f}")
-            st.text(classification_report(y_test, y_pred))
+            st.text(classification_report(y_test, y_pred, target_names=le.classes_))
             cm = confusion_matrix(y_test, y_pred)
             fig, ax = plt.subplots()
-            ConfusionMatrixDisplay(cm, display_labels=model.classes_).plot(ax=ax)
+            ConfusionMatrixDisplay(cm, display_labels=le.classes_).plot(ax=ax)
             st.pyplot(fig)
 
     with tabs[4]:
