@@ -14,8 +14,8 @@ from sklearn.metrics import accuracy_score, classification_report, ConfusionMatr
 import plotly.express as px
 
 st.set_page_config(page_title="AQI Modeling App", layout="wide")
-st.title("Air Quality Index (AQI) Web App with Modeling")
-st.markdown("Upload your air quality dataset, calculate AQI, and run machine learning models to predict AQI categories.")
+st.title("Air Quality Index (AQI) Web App with Full ML Pipeline")
+st.markdown("This app supports AQI calculation from PM2.5, synthetic feature generation, outlier detection, normalization, PCA, and model training (Naive Bayes, Decision Tree, Random Forest, XGBoost). Upload a CSV with appropriate air quality features to begin.")
 
 uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
 
@@ -24,7 +24,6 @@ if uploaded_file:
     st.subheader("Raw Dataset Preview")
     st.write(df.head())
 
-    # AQI Breakpoints for PM2.5
     breakpoints_pm25 = [
         (0.0, 9.0, 0, 50), (9.1, 35.4, 51, 100), (35.5, 55.4, 101, 150),
         (55.5, 125.4, 151, 200), (125.5, 225.4, 201, 300), (225.5, 500.4, 301, 500)
@@ -58,14 +57,18 @@ if uploaded_file:
     st.subheader("Feature Engineering")
     df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
     df['NO*WS'] = df['NO'] * df['WS']
-    st.write(df[['pollutionRatio', 'NO*WS']].head())
+    df['SO2*TEMP'] = df['SO2'] * df['TEMP']
+    df['O3*RH'] = df['O3'] * df['RH']
+    df['NO2/CO'] = df['NO2'] / (df['CO'] + 1e-5)
+    df['NOx/NO'] = df['NOx'] / (df['NO'] + 1e-5)
+    st.write(df[['pollutionRatio', 'NO*WS', 'SO2*TEMP', 'O3*RH', 'NO2/CO', 'NOx/NO']].head())
 
     df_clean = df.dropna()
-    X = df_clean.drop(columns=['AQI_PM2.5', 'AQI_Category'])
-    y = df_clean['AQI_Category']
+    st.subheader("Outlier Summary & Distribution")
+    st.write(df_clean.describe())
 
-    st.subheader("Outlier Summary")
-    st.write(X.describe())
+    y = df_clean['AQI_Category']
+    X = df_clean.drop(columns=['AQI_PM2.5', 'AQI_Category'])
 
     st.subheader("Normalization & PCA")
     scaler = StandardScaler()
@@ -74,8 +77,7 @@ if uploaded_file:
     X_pca = pca.fit_transform(X_scaled)
     pca_df = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
     pca_df['AQI_Category'] = y.values
-
-    fig = px.scatter(pca_df, x='PC1', y='PC2', color='AQI_Category', title="PCA Visualization")
+    fig = px.scatter(pca_df, x='PC1', y='PC2', color='AQI_Category', title="PCA Scatter Plot")
     st.plotly_chart(fig)
 
     st.subheader("Train-Test Split and Model Training")
@@ -109,9 +111,8 @@ if uploaded_file:
         st.write("Accuracy:", accuracy_score(y_test, y_pred_rf))
         st.text("Classification Report:")
         st.text(classification_report(y_test, y_pred_rf))
-
         st.markdown("#### Feature Importance")
-        importance = pd.Series(rf.feature_importances_, index=df_clean.drop(columns=['AQI_PM2.5','AQI_Category']).columns)
+        importance = pd.Series(rf.feature_importances_, index=X.columns)
         st.bar_chart(importance.sort_values(ascending=False))
 
     with tabs[3]:
@@ -123,4 +124,4 @@ if uploaded_file:
         st.text("Classification Report:")
         st.text(classification_report(y_test, y_pred_xgb))
 else:
-    st.info("Please upload a CSV file with air quality features including 'PM2.5', 'Benzene', 'Toluene', 'NO', and 'WS'.")
+    st.info("Please upload a CSV file with columns like PM2.5, Benzene, Toluene, NO, WS, SO2, TEMP, O3, RH, NO2, CO, NOx.")
