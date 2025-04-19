@@ -13,9 +13,10 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.linear_model import LinearRegression
 import plotly.express as px
 
-# Sidebar configuration
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Home", "EDA", "Feature Importance", "PCA", "Model Comparison"])
+# Navigation at the top
+st.title("Air Quality Index (AQI) Dashboard")
+st.markdown("---")
+page = st.selectbox("Go to:", ["Home", "EDA", "Feature Importance", "PCA", "Model Comparison"])
 
 # Load dataset
 uploaded_file = st.sidebar.file_uploader("Upload CSV File", type="csv")
@@ -63,15 +64,11 @@ if uploaded_file is not None:
 
     # Home Page
     if page == "Home":
-        st.title("Air Quality Index (AQI) Dashboard")
-        st.write("Welcome to the AQI Analysis Tool. Upload your data using the sidebar.")
         st.subheader("Preview of Data")
         st.dataframe(df.head())
 
     # EDA Page
     elif page == "EDA":
-        st.title("Exploratory Data Analysis")
-
         st.subheader("Distribution Plots")
         valid_cols = [col for col in X.columns if X[col].notna().sum() > 0]
         n_cols = 5
@@ -107,7 +104,7 @@ if uploaded_file is not None:
 
     # Feature Importance Page
     elif page == "Feature Importance":
-        st.title("Feature Importance (Random Forest)")
+        st.subheader("Feature Importance (Random Forest)")
         model = RandomForestRegressor()
         model.fit(X, y)
         importance = model.feature_importances_
@@ -117,7 +114,7 @@ if uploaded_file is not None:
 
     # PCA Page
     elif page == "PCA":
-        st.title("Principal Component Analysis")
+        st.subheader("Principal Component Analysis")
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X)
         pca_df = pd.DataFrame(X_pca, columns=["PC1", "PC2"])
@@ -127,7 +124,7 @@ if uploaded_file is not None:
 
     # Model Comparison Page
     elif page == "Model Comparison":
-        st.title("Model Comparison")
+        st.subheader("Model Comparison")
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
         models = {
@@ -142,9 +139,12 @@ if uploaded_file is not None:
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
             st.write(f"### {name} Results")
-            st.write(f"RMSE: {mean_squared_error(y_test, y_pred, squared=False):.2f}")
-            st.write(f"MAE: {mean_absolute_error(y_test, y_pred):.2f}")
-            st.write(f"R²: {r2_score(y_test, y_pred):.2f}")
+            rmse = mean_squared_error(y_test, y_pred, squared=False)
+            mae = mean_absolute_error(y_test, y_pred)
+            r2 = r2_score(y_test, y_pred)
+            st.write("RMSE: {:.2f}".format(rmse))
+            st.write("MAE: {:.2f}".format(mae))
+            st.write("R²: {:.2f}".format(r2))
             fig_res = px.scatter(x=y_test, y=y_pred, labels={"x": "Actual AQI", "y": "Predicted AQI"}, title=f"{name} Residual Plot")
             st.plotly_chart(fig_res)
 
