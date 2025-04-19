@@ -71,10 +71,39 @@ if uploaded_file is not None:
     # EDA Page
     elif page == "EDA":
         st.title("Exploratory Data Analysis")
-        selected_features = st.multiselect("Select features for bivariate plot:", df.columns.tolist())
-        if len(selected_features) >= 2:
-            fig = px.scatter(df, x=selected_features[0], y=selected_features[1], color="AQI_Category")
-            st.plotly_chart(fig)
+
+        st.subheader("Distribution Plots")
+        valid_cols = [col for col in X.columns if X[col].notna().sum() > 0]
+        n_cols = 5
+        n_rows = int(np.ceil(len(valid_cols) / n_cols))
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows))
+        axes = axes.flatten()
+
+        for idx, col in enumerate(valid_cols):
+            sns.histplot(X[col].dropna(), kde=True, bins=50, ax=axes[idx])
+            axes[idx].set_title(f'Distribution of {col}')
+            axes[idx].set_xlabel(col)
+            axes[idx].set_ylabel('Frequency')
+
+        for i in range(len(valid_cols), len(axes)):
+            fig.delaxes(axes[i])
+
+        st.pyplot(fig)
+
+        st.subheader("Boxplots by AQI Category")
+        fig2, axes2 = plt.subplots(1, 3, figsize=(24, 6))
+        sns.boxplot(x="AQI_Category", y="PM2.5", data=df, ax=axes2[0])
+        axes2[0].set_title("PM2.5 by AQI Category")
+        sns.boxplot(x="AQI_Category", y="Benzene", data=df, ax=axes2[1])
+        axes2[1].set_title("Benzene by AQI Category")
+        sns.boxplot(x="AQI_Category", y="Toluene", data=df, ax=axes2[2])
+        axes2[2].set_title("Toluene by AQI Category")
+        st.pyplot(fig2)
+
+        st.subheader("Pairplot")
+        selected_features = ["PM2.5", "SO2", "NO2", "WS", "AQI_PM2.5"]
+        pairplot_fig = sns.pairplot(df[selected_features], hue="AQI_Category")
+        st.pyplot(pairplot_fig)
 
     # Feature Importance Page
     elif page == "Feature Importance":
