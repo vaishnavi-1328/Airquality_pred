@@ -88,4 +88,30 @@ if uploaded_file:
         Dropout(0.2),
         Dense(64, activation='relu'),
         Dropout(0.1),
-        Dense(1
+        Dense(1)
+    ])
+
+    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+    history = model.fit(X_train_scaled, y_train, validation_data=(X_test_scaled, y_test), epochs=100, batch_size=32, verbose=0)
+
+    nn_preds = model.predict(X_test_scaled).ravel()
+    nn_rmse = mean_squared_error(y_test, nn_preds, squared=False)
+    nn_mae = mean_absolute_error(y_test, nn_preds)
+    nn_r2 = r2_score(y_test, nn_preds)
+
+    st.markdown(f"**Neural Net RMSE**: {nn_rmse:.2f}, **MAE**: {nn_mae:.2f}, **R²**: {nn_r2:.4f}")
+
+    # Residual Plot
+    st.subheader("📉 Residual Plot (Neural Net)")
+    residuals = y_test.values - nn_preds
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.scatter(nn_preds, residuals, alpha=0.5, edgecolors='k')
+    ax.axhline(0, color='red', linestyle='--')
+    ax.set_xlabel('Predicted AQI')
+    ax.set_ylabel('Residuals')
+    ax.set_title('Residual Plot - Neural Network')
+    ax.grid(True)
+    st.pyplot(fig)
+
+else:
+    st.info("Upload your AQI dataset to get started.")
