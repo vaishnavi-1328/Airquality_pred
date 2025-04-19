@@ -103,7 +103,8 @@ if uploaded_file is not None:
 
         st.subheader("Pairplot of Important Features")
         selected_features = ["PM2.5", "SO2", "NO2", "WS", "AQI_PM2.5"]
-        pairplot_fig = sns.pairplot(df[selected_features], hue="AQI_Category")
+        pairplot_data = df[selected_features + ["AQI_Category"]]
+        pairplot_fig = sns.pairplot(pairplot_data, hue="AQI_Category")
         st.pyplot(pairplot_fig)
 
     # FEATURE IMPORTANCE
