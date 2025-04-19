@@ -12,24 +12,52 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score, classification_report, ConfusionMatrixDisplay, confusion_matrix
 import plotly.express as px
+from scipy.stats import zscore
 
 st.set_page_config(page_title="AQI ML Web App", layout="wide")
-st.title("Air Quality Index (AQI) - Full Machine Learning Pipeline")
+st.title("Air Quality Index (AQI) - ML Pipeline with EDA")
 
 uploaded_file = st.sidebar.file_uploader("📥 Upload a CSV File", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     
-    tabs = st.tabs(["📊 Overview", "⚙️ Preprocessing", "🔍 PCA", "🤖 Models", "📈 Results"])
+    tabs = st.tabs(["📊 Overview", "📈 EDA", "⚙️ Preprocessing", "🔍 PCA", "🤖 Models", "📉 Results"])
 
     with tabs[0]:
         st.header("📊 Project Overview")
-        st.write("This app calculates AQI from PM2.5, performs feature engineering, visualizes PCA, and trains ML models.")
+        st.write("This app calculates AQI from PM2.5, performs EDA, feature engineering, PCA, and ML classification.")
         st.subheader("Raw Dataset Preview")
         st.dataframe(df.head())
 
-    # AQI Calculation
+    with tabs[1]:
+        st.header("📈 Exploratory Data Analysis")
+        st.subheader("Histogram of Numeric Features")
+        numeric_cols = df.select_dtypes(include=np.number).columns
+        for col in numeric_cols:
+            fig, ax = plt.subplots()
+            sns.histplot(df[col], kde=True, ax=ax)
+            ax.set_title(f"Distribution of {col}")
+            st.pyplot(fig)
+
+        st.subheader("Boxplot for Detecting Outliers")
+        for col in numeric_cols:
+            fig, ax = plt.subplots()
+            sns.boxplot(data=df, x=col, ax=ax)
+            ax.set_title(f"Boxplot: {col}")
+            st.pyplot(fig)
+
+        st.subheader("Correlation Heatmap")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
+        st.pyplot(fig)
+
+        if len(numeric_cols) <= 5:
+            st.subheader("Pairplot (only shown if ≤ 5 numeric features)")
+            fig = sns.pairplot(df[numeric_cols])
+            st.pyplot(fig)
+
+    # AQI calculation
     breakpoints_pm25 = [
         (0.0, 9.0, 0, 50), (9.1, 35.4, 51, 100), (35.5, 55.4, 101, 150),
         (55.5, 125.4, 151, 200), (125.5, 225.4, 201, 300), (225.5, 500.4, 301, 500)
@@ -60,9 +88,10 @@ if uploaded_file:
     df['AQI_PM2.5'] = df['PM2.5'].apply(calculate_aqi)
     df['AQI_Category'] = df['AQI_PM2.5'].apply(categorize_aqi)
 
-    with tabs[1]:
-        st.header("⚙️ Feature Engineering and Normalization")
+    with tabs[2]:
+        st.header("⚙️ Feature Engineering and Outlier Removal")
 
+        # Feature engineering
         if 'Benzene' in df.columns and 'Toluene' in df.columns:
             df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
         if 'NO' in df.columns and 'WS' in df.columns:
@@ -76,20 +105,24 @@ if uploaded_file:
         if 'NOx' in df.columns and 'NO' in df.columns:
             df['NOx/NO'] = df['NOx'] / (df['NO'] + 1e-5)
 
-        df_clean = df.dropna()
-        st.success("Feature engineering completed on available columns.")
-        st.dataframe(df_clean.describe())
+        df = df.dropna()
 
-    # Label encode the target variable
-    y = df_clean['AQI_Category']
+        st.subheader("Removing Outliers using Z-Score (|z| > 3)")
+        z = np.abs(zscore(df.select_dtypes(include=[np.number])))
+        df = df[(z < 3).all(axis=1)]
+        st.success(f"Outliers removed. Remaining data points: {len(df)}")
+        st.dataframe(df.describe())
+
+    # Labels
+    y = df['AQI_Category']
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
 
-    X = df_clean.drop(columns=['AQI_PM2.5', 'AQI_Category'])
+    X = df.drop(columns=['AQI_PM2.5', 'AQI_Category'])
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    with tabs[2]:
+    with tabs[3]:
         st.header("🔍 PCA Visualization")
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X_scaled)
@@ -98,10 +131,9 @@ if uploaded_file:
         fig = px.scatter(pca_df, x='PC1', y='PC2', color='AQI_Category', title="PCA - 2D Projection")
         st.plotly_chart(fig)
 
-    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_encoded, test_size=0.3, random_state=42)
 
-    with tabs[3]:
+    with tabs[4]:
         st.header("🤖 Model Training")
 
         models = {
@@ -131,8 +163,8 @@ if uploaded_file:
             plt.title(f"{name} - Confusion Matrix", fontsize=12)
             st.pyplot(fig)
 
-    with tabs[4]:
-        st.header("📈 Results Summary")
+    with tabs[5]:
+        st.header("📉 Results Summary")
         st.subheader("📊 Model Accuracy Comparison")
         st.bar_chart(pd.Series(model_scores).sort_values(ascending=False))
         st.subheader("🌟 Feature Importances (Random Forest)")
