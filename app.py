@@ -10,19 +10,24 @@ from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.metrics import accuracy_score, classification_report, ConfusionMatrixDisplay
+from sklearn.metrics import accuracy_score, classification_report, ConfusionMatrixDisplay, confusion_matrix
 import plotly.express as px
 
-st.set_page_config(page_title="AQI Modeling App", layout="wide")
-st.title("Air Quality Index (AQI) Web App with Full ML Pipeline")
-st.markdown("This app supports AQI calculation from PM2.5, synthetic feature generation, outlier detection, normalization, PCA, and model training (Naive Bayes, Decision Tree, Random Forest, XGBoost). Upload a CSV with appropriate air quality features to begin.")
+st.set_page_config(page_title="AQI ML Web App", layout="wide")
+st.title("Air Quality Index (AQI) - Full Machine Learning Pipeline")
 
-uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
+uploaded_file = st.sidebar.file_uploader("📥 Upload a CSV File", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    st.subheader("Raw Dataset Preview")
-    st.write(df.head())
+    
+    tabs = st.tabs(["📊 Overview", "⚙️ Preprocessing", "🔍 PCA", "🤖 Models", "📈 Results"])
+
+    with tabs[0]:
+        st.header("📊 Project Overview")
+        st.write("This web application calculates AQI from PM2.5, performs feature engineering, visualizes PCA, and trains multiple ML models.")
+        st.subheader("Raw Dataset Preview")
+        st.dataframe(df.head())
 
     breakpoints_pm25 = [
         (0.0, 9.0, 0, 50), (9.1, 35.4, 51, 100), (35.5, 55.4, 101, 150),
@@ -54,74 +59,64 @@ if uploaded_file:
     df['AQI_PM2.5'] = df['PM2.5'].apply(calculate_aqi)
     df['AQI_Category'] = df['AQI_PM2.5'].apply(categorize_aqi)
 
-    st.subheader("Feature Engineering")
-    df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
-    df['NO*WS'] = df['NO'] * df['WS']
-    df['SO2*TEMP'] = df['SO2'] * df['TEMP']
-    df['O3*RH'] = df['O3'] * df['RH']
-    df['NO2/CO'] = df['NO2'] / (df['CO'] + 1e-5)
-    df['NOx/NO'] = df['NOx'] / (df['NO'] + 1e-5)
-    st.write(df[['pollutionRatio', 'NO*WS', 'SO2*TEMP', 'O3*RH', 'NO2/CO', 'NOx/NO']].head())
-
-    df_clean = df.dropna()
-    st.subheader("Outlier Summary & Distribution")
-    st.write(df_clean.describe())
+    with tabs[1]:
+        st.header("⚙️ Feature Engineering and Normalization")
+        df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
+        df['NO*WS'] = df['NO'] * df['WS']
+        df['SO2*TEMP'] = df['SO2'] * df['TEMP']
+        df['O3*RH'] = df['O3'] * df['RH']
+        df['NO2/CO'] = df['NO2'] / (df['CO'] + 1e-5)
+        df['NOx/NO'] = df['NOx'] / (df['NO'] + 1e-5)
+        df_clean = df.dropna()
+        st.success("New Features Added: pollutionRatio, NO*WS, SO2*TEMP, O3*RH, NO2/CO, NOx/NO")
+        st.dataframe(df_clean.describe())
 
     y = df_clean['AQI_Category']
     X = df_clean.drop(columns=['AQI_PM2.5', 'AQI_Category'])
-
-    st.subheader("Normalization & PCA")
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(X_scaled)
-    pca_df = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
-    pca_df['AQI_Category'] = y.values
-    fig = px.scatter(pca_df, x='PC1', y='PC2', color='AQI_Category', title="PCA Scatter Plot")
-    st.plotly_chart(fig)
-
-    st.subheader("Train-Test Split and Model Training")
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
-
-    tabs = st.tabs(["Naive Bayes", "Decision Tree", "Random Forest", "XGBoost"])
-
-    with tabs[0]:
-        st.markdown("### Naive Bayes")
-        nb = GaussianNB()
-        nb.fit(X_train, y_train)
-        y_pred_nb = nb.predict(X_test)
-        st.write("Accuracy:", accuracy_score(y_test, y_pred_nb))
-        st.text("Classification Report:")
-        st.text(classification_report(y_test, y_pred_nb))
-
-    with tabs[1]:
-        st.markdown("### Decision Tree")
-        dt = DecisionTreeClassifier(random_state=42)
-        dt.fit(X_train, y_train)
-        y_pred_dt = dt.predict(X_test)
-        st.write("Accuracy:", accuracy_score(y_test, y_pred_dt))
-        st.text("Classification Report:")
-        st.text(classification_report(y_test, y_pred_dt))
 
     with tabs[2]:
-        st.markdown("### Random Forest")
-        rf = RandomForestClassifier(random_state=42)
-        rf.fit(X_train, y_train)
-        y_pred_rf = rf.predict(X_test)
-        st.write("Accuracy:", accuracy_score(y_test, y_pred_rf))
-        st.text("Classification Report:")
-        st.text(classification_report(y_test, y_pred_rf))
-        st.markdown("#### Feature Importance")
+        st.header("🔍 PCA Visualization")
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X_scaled)
+        pca_df = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
+        pca_df['AQI_Category'] = y.values
+        fig = px.scatter(pca_df, x='PC1', y='PC2', color='AQI_Category', title="PCA - 2D Projection")
+        st.plotly_chart(fig)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
+
+    with tabs[3]:
+        st.header("🤖 Model Training")
+        models = {
+            "Naive Bayes": GaussianNB(),
+            "Decision Tree": DecisionTreeClassifier(random_state=42),
+            "Random Forest": RandomForestClassifier(random_state=42),
+            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+        }
+
+        model_scores = {}
+        for name, model in models.items():
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            acc = accuracy_score(y_test, y_pred)
+            model_scores[name] = acc
+            st.subheader(f"🔹 {name} - Accuracy: {acc:.2f}")
+            st.text(classification_report(y_test, y_pred))
+            cm = confusion_matrix(y_test, y_pred)
+            fig, ax = plt.subplots()
+            ConfusionMatrixDisplay(cm, display_labels=model.classes_).plot(ax=ax)
+            st.pyplot(fig)
+
+    with tabs[4]:
+        st.header("📈 Results Summary")
+        st.subheader("📊 Model Accuracy Comparison")
+        st.bar_chart(pd.Series(model_scores).sort_values(ascending=False))
+        st.subheader("🌟 Feature Importances (Random Forest)")
+        rf = models['Random Forest']
         importance = pd.Series(rf.feature_importances_, index=X.columns)
         st.bar_chart(importance.sort_values(ascending=False))
 
-    with tabs[3]:
-        st.markdown("### XGBoost")
-        xgb = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
-        xgb.fit(X_train, y_train)
-        y_pred_xgb = xgb.predict(X_test)
-        st.write("Accuracy:", accuracy_score(y_test, y_pred_xgb))
-        st.text("Classification Report:")
-        st.text(classification_report(y_test, y_pred_xgb))
 else:
-    st.info("Please upload a CSV file with columns like PM2.5, Benzene, Toluene, NO, WS, SO2, TEMP, O3, RH, NO2, CO, NOx.")
+    st.warning("Please upload a CSV file with PM2.5 and air quality features to begin.")
