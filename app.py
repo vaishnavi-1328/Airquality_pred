@@ -20,7 +20,6 @@ st.title("Air Quality Index (AQI) Dashboard")
 st.markdown("---")
 
 tabs = st.tabs(["Home", "EDA", "Feature Importance", "PCA", "Model Metrics", "Model Comparison"])
-
 st.sidebar.title("Upload Dataset")
 uploaded_file = st.sidebar.file_uploader("Upload CSV File", type="csv")
 
@@ -45,18 +44,12 @@ if uploaded_file is not None:
         return None
 
     def categorize_aqi(aqi):
-        if aqi <= 50:
-            return "Good"
-        elif aqi <= 100:
-            return "Moderate"
-        elif aqi <= 150:
-            return "Unhealthy for Sensitive Groups"
-        elif aqi <= 200:
-            return "Unhealthy"
-        elif aqi <= 300:
-            return "Very Unhealthy"
-        else:
-            return "Hazardous"
+        if aqi <= 50: return "Good"
+        elif aqi <= 100: return "Moderate"
+        elif aqi <= 150: return "Unhealthy for Sensitive Groups"
+        elif aqi <= 200: return "Unhealthy"
+        elif aqi <= 300: return "Very Unhealthy"
+        else: return "Hazardous"
 
     df["AQI_PM2.5"] = df["PM2.5"].apply(lambda x: calculate_aqi(x, breakpoints_pm25))
     df["AQI_Category"] = df["AQI_PM2.5"].apply(categorize_aqi)
@@ -74,12 +67,12 @@ if uploaded_file is not None:
     y = df_clean["AQI_PM2.5"]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    # HOME TAB
+    # HOME
     with tabs[0]:
         st.subheader("Dataset Preview")
         st.dataframe(df.head())
 
-    # EDA TAB
+    # EDA
     with tabs[1]:
         st.subheader("Histogram Grid")
         valid_cols = [col for col in X.columns if X[col].notna().sum() > 0]
@@ -106,7 +99,7 @@ if uploaded_file is not None:
         sns.boxplot(x="AQI_Category", y="Toluene", data=df, ax=axes_box[2])
         st.pyplot(fig_box)
 
-        st.subheader("Pairplot of Key Features")
+        st.subheader("Pairplot")
         pairplot_fig = sns.pairplot(df[["PM2.5", "SO2", "NO2", "WS", "AQI_PM2.5", "AQI_Category"]], hue="AQI_Category")
         st.pyplot(pairplot_fig)
 
@@ -115,17 +108,7 @@ if uploaded_file is not None:
         sns.heatmap(df_clean.select_dtypes(include=np.number).corr(), annot=True, cmap="coolwarm", fmt=".2f", ax=ax_corr)
         st.pyplot(fig_corr)
 
-        st.subheader("Download All EDA Plots as PDF")
-        pdf_buffer = io.BytesIO()
-        with PdfPages(pdf_buffer) as pdf:
-            pdf.savefig(fig)
-            pdf.savefig(fig_bi)
-            pdf.savefig(fig_box)
-            pdf.savefig(pairplot_fig.fig)
-            pdf.savefig(fig_corr)
-        st.download_button("Download EDA Plots PDF", data=pdf_buffer.getvalue(), file_name="eda_plots.pdf", mime="application/pdf")
-
-    # FEATURE IMPORTANCE TAB
+    # FEATURE IMPORTANCE
     with tabs[2]:
         st.subheader("Feature Importance using Random Forest")
         model = RandomForestRegressor()
@@ -139,13 +122,12 @@ if uploaded_file is not None:
 
     # PCA TAB
     with tabs[3]:
-        st.subheader("Principal Component Analysis (PCA)")
+        st.subheader("PCA")
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X)
         pca_df = pd.DataFrame(X_pca, columns=["PC1", "PC2"])
         pca_df["AQI_Category"] = df_clean["AQI_Category"].values
-        fig_pca = px.scatter(pca_df, x="PC1", y="PC2", color="AQI_Category", title="PCA: AQI Categories in 2D Space")
-        st.plotly_chart(fig_pca)
+        st.plotly_chart(px.scatter(pca_df, x="PC1", y="PC2", color="AQI_Category", title="PCA"))
 
     # MODEL METRICS TAB
     with tabs[4]:
@@ -157,20 +139,27 @@ if uploaded_file is not None:
             "Gradient Boosting": GradientBoostingRegressor(),
             "Linear Regression": LinearRegression()
         }
-        results = []
         preds = {}
+        confusion_matrices = {}
+
         for name, model in models.items():
+            st.markdown(f"### {name}")
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
             preds[name] = (y_test, y_pred)
-            results.append({
-                "Model": name,
-                "RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
-                "MAE": mean_absolute_error(y_test, y_pred),
-                "R2": r2_score(y_test, y_pred)
-            })
-        results_df = pd.DataFrame(results).sort_values(by="R2", ascending=False)
-        st.dataframe(results_df)
+
+            st.write(f"**RMSE:** {np.sqrt(mean_squared_error(y_test, y_pred)):.2f}")
+            st.write(f"**MAE:** {mean_absolute_error(y_test, y_pred):.2f}")
+            st.write(f"**R² Score:** {r2_score(y_test, y_pred):.2f}")
+
+            pred_cat = pd.cut(y_pred, bins=[0, 50, 100, 150, 200, 300, 500],
+                              labels=["Good", "Moderate", "Unhealthy for Sensitive Groups", "Unhealthy", "Very Unhealthy", "Hazardous"])
+            true_cat = pd.cut(y_test, bins=[0, 50, 100, 150, 200, 300, 500],
+                              labels=["Good", "Moderate", "Unhealthy for Sensitive Groups", "Unhealthy", "Very Unhealthy", "Hazardous"])
+            conf_df = pd.crosstab(true_cat, pred_cat, rownames=["Actual"], colnames=["Predicted"])
+            confusion_matrices[name] = conf_df
+            st.write("**Confusion Matrix:**")
+            st.dataframe(conf_df)
 
         st.subheader("Download Cleaned Data")
         csv = df_clean.to_csv(index=False)
@@ -180,7 +169,7 @@ if uploaded_file is not None:
 
     # MODEL COMPARISON TAB
     with tabs[5]:
-        st.subheader("Residual Histograms (All Models)")
+        st.subheader("Residual Histograms")
         fig_resid_all, axes_resid_all = plt.subplots(1, len(models), figsize=(6 * len(models), 5))
         for i, (name, model) in enumerate(models.items()):
             model.fit(X_train, y_train)
@@ -189,3 +178,8 @@ if uploaded_file is not None:
             sns.histplot(residuals, bins=30, kde=True, ax=axes_resid_all[i])
             axes_resid_all[i].set_title(f"{name} Residuals")
         st.pyplot(fig_resid_all)
+
+        st.subheader("Confusion Matrix Comparison")
+        for name, conf_matrix in confusion_matrices.items():
+            st.markdown(f"#### {name}")
+            st.dataframe(conf_matrix)
