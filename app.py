@@ -10,7 +10,8 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 from sklearn.naive_bayes import GaussianNB
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.linear_model import LinearRegression
 import plotly.express as px
 
 # Title
@@ -100,6 +101,9 @@ if uploaded_file is not None:
     models = {
         "Random Forest": RandomForestRegressor(),
         "XGBoost": XGBRegressor(),
+        "Decision Tree": DecisionTreeRegressor(),
+        "Naive Bayes": GaussianNB(),
+        "Linear Regression": LinearRegression()
     }
 
     for name, model in models.items():
