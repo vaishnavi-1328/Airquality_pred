@@ -3,115 +3,101 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
+from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-from xgboost import XGBRegressor
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
+st.set_page_config(page_title='AQI PM2.5 Analysis App', layout='wide')
+st.title("🌫️ Air Quality Index (PM2.5) Analysis")
 
-st.set_page_config(layout="wide")
-st.title("🌫️ AQI Prediction from PM2.5 – Streamlit App")
+# Upload CSV
+data = st.file_uploader("Upload your CSV file", type=['csv'])
 
-uploaded_file = st.file_uploader("📂 Upload air quality CSV", type=["csv"])
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-
-    # Breakpoints and category
-    breakpoints_pm25 = [
-        (0.0, 9.0, 0, 50), (9.1, 35.4, 51, 100), (35.5, 55.4, 101, 150),
-        (55.5, 125.4, 151, 200), (125.5, 225.4, 201, 300), (225.5, 500.4, 301, 500)
-    ]
-
-    def calculate_aqi(conc, bps):
-        for bp_lo, bp_hi, i_lo, i_hi in bps:
-            if bp_lo <= conc <= bp_hi:
-                return round(((i_hi - i_lo) / (bp_hi - bp_lo)) * (conc - bp_lo) + i_lo)
-        return None
-
-    def categorize_aqi(aqi):
-        if aqi <= 50: return "Good"
-        elif aqi <= 100: return "Moderate"
-        elif aqi <= 150: return "Unhealthy for Sensitive Groups"
-        elif aqi <= 200: return "Unhealthy"
-        elif aqi <= 300: return "Very Unhealthy"
-        else: return "Hazardous"
-
-    # AQI Computation
-    df["AQI_PM2.5"] = df["PM2.5"].apply(lambda x: calculate_aqi(x, breakpoints_pm25))
-    df["AQI_Category"] = df["AQI_PM2.5"].apply(categorize_aqi)
-
-    # Feature engineering
-    df["pollutionRatio"] = df["Benzene"] / df["Toluene"]
-    df["NO*WS"] = df["NO"] * df["WS"]
-    df.dropna(inplace=True)
-
-    st.subheader("🔍 Cleaned Data Preview")
+if data is not None:
+    df = pd.read_csv(data)
+    st.subheader("📄 Raw Dataset Preview")
     st.dataframe(df.head())
 
-    # Select features and target
-    selected_features = ['PM10', 'SO2', 'NO2', 'CO', 'O3', 'Temp', 'Humidity', 'WS', 'Benzene', 'Toluene', 'NO', 'pollutionRatio', 'NO*WS']
-    target = 'AQI_PM2.5'
-    X = df[selected_features]
-    y = df[target]
+    # EDA
+    st.subheader("🔍 Exploratory Data Analysis")
+    st.write(df.describe())
+    st.write("Missing values per column:")
+    st.write(df.isnull().sum())
 
-    # Polynomial Features
-    poly = PolynomialFeatures(degree=2, include_bias=False)
-    X_poly = poly.fit_transform(X)
+    # Outlier Detection (IQR Method)
+    st.subheader("🚨 Outlier Detection and Removal")
+    Q1 = df.quantile(0.25)
+    Q3 = df.quantile(0.75)
+    IQR = Q3 - Q1
+    df_clean = df[~((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR))).any(axis=1)]
+    st.write(f"Original shape: {df.shape}, After outlier removal: {df_clean.shape}")
 
-    # Split and scale
-    X_train, X_test, y_train, y_test = train_test_split(X_poly, y, test_size=0.2, random_state=42)
+    # Normalization
+    st.subheader("⚖️ Feature Normalization")
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    df_scaled = scaler.fit_transform(df_clean.dropna())
+    df_scaled = pd.DataFrame(df_scaled, columns=df_clean.columns)
+    st.write(df_scaled.head())
 
-    # 📦 XGBoost Model
-    st.subheader("🌲 XGBoost Regression")
-    xgb = XGBRegressor(n_estimators=300, learning_rate=0.1, max_depth=5, random_state=42)
-    xgb.fit(X_train, y_train)
-    xgb_preds = xgb.predict(X_test)
+    # PCA
+    st.subheader("🧬 Principal Component Analysis (PCA)")
+    pca = PCA(n_components=2)
+    pca_result = pca.fit_transform(df_scaled)
+    st.write("Explained Variance Ratio:", pca.explained_variance_ratio_)
+    fig_pca, ax_pca = plt.subplots()
+    ax_pca.scatter(pca_result[:, 0], pca_result[:, 1], alpha=0.6)
+    ax_pca.set_xlabel('PCA 1')
+    ax_pca.set_ylabel('PCA 2')
+    ax_pca.set_title('PCA - 2D Projection')
+    st.pyplot(fig_pca)
 
-    xgb_rmse = mean_squared_error(y_test, xgb_preds, squared=False)
-    xgb_mae = mean_absolute_error(y_test, xgb_preds)
-    xgb_r2 = r2_score(y_test, xgb_preds)
+    # Bivariate Analysis
+    st.subheader("📊 Bivariate Analysis")
+    selected_features = st.multiselect("Select features to plot vs PM2.5", df.columns.tolist())
+    for feature in selected_features:
+        fig, ax = plt.subplots()
+        sns.scatterplot(x=df_clean[feature], y=df_clean['PM2.5'], ax=ax)
+        ax.set_title(f'{feature} vs PM2.5')
+        st.pyplot(fig)
 
-    st.markdown(f"**RMSE**: {xgb_rmse:.2f}, **MAE**: {xgb_mae:.2f}, **R²**: {xgb_r2:.4f}")
+    # Multivariate Heatmap
+    st.subheader("🧩 Multivariate Correlation Heatmap")
+    fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
+    sns.heatmap(df_clean.corr(), annot=True, cmap='coolwarm', ax=ax_corr)
+    st.pyplot(fig_corr)
 
-    # 🧠 Neural Net Model
-    st.subheader("🧠 Neural Network Regression")
+    # Regression Models
+    st.subheader("🤖 Model Training and Comparison")
+    X = df_clean.drop(columns=['PM2.5'])
+    y = df_clean['PM2.5']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    model = Sequential([
-        Dense(128, activation='relu', input_shape=(X_train_scaled.shape[1],)),
-        Dropout(0.2),
-        Dense(64, activation='relu'),
-        Dropout(0.1),
-        Dense(1)
-    ])
+    models = {
+        'Random Forest': RandomForestRegressor(),
+        'Decision Tree': DecisionTreeRegressor(),
+        'XGBoost': XGBRegressor()
+    }
 
-    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-    history = model.fit(X_train_scaled, y_train, validation_data=(X_test_scaled, y_test), epochs=100, batch_size=32, verbose=0)
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        mae = mean_absolute_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
 
-    nn_preds = model.predict(X_test_scaled).ravel()
-    nn_rmse = mean_squared_error(y_test, nn_preds, squared=False)
-    nn_mae = mean_absolute_error(y_test, nn_preds)
-    nn_r2 = r2_score(y_test, nn_preds)
+        st.write(f"**{name}**")
+        st.write(f"RMSE: {rmse:.2f}, MAE: {mae:.2f}, R²: {r2:.2f}")
 
-    st.markdown(f"**Neural Net RMSE**: {nn_rmse:.2f}, **MAE**: {nn_mae:.2f}, **R²**: {nn_r2:.4f}")
-
-    # Residual Plot
-    st.subheader("📉 Residual Plot (Neural Net)")
-    residuals = y_test.values - nn_preds
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(nn_preds, residuals, alpha=0.5, edgecolors='k')
-    ax.axhline(0, color='red', linestyle='--')
-    ax.set_xlabel('Predicted AQI')
-    ax.set_ylabel('Residuals')
-    ax.set_title('Residual Plot - Neural Network')
-    ax.grid(True)
-    st.pyplot(fig)
+        fig_res, ax_res = plt.subplots()
+        sns.residplot(x=y_test, y=y_pred, lowess=True, ax=ax_res, line_kws={'color': 'red'})
+        ax_res.set_title(f"Residual Plot - {name}")
+        ax_res.set_xlabel("Actual PM2.5")
+        ax_res.set_ylabel("Residuals")
+        st.pyplot(fig_res)
 
 else:
-    st.info("Upload your AQI dataset to get started.")
+    st.info("Please upload a CSV file to begin analysis.")
