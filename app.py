@@ -12,13 +12,16 @@ from xgboost import XGBRegressor
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.linear_model import LinearRegression
 import plotly.express as px
+import base64
 
-# Navigation at the top
+# Top menu style navigation
+st.set_page_config(layout="wide")
 st.title("Air Quality Index (AQI) Dashboard")
 st.markdown("---")
-page = st.selectbox("Go to:", ["Home", "EDA", "Feature Importance", "PCA", "Model Comparison"])
+page = st.selectbox("Navigate to Section:", ["Home", "EDA", "Feature Importance", "PCA", "Model Comparison"])
 
-# Load dataset
+# Sidebar for uploading dataset
+st.sidebar.title("Upload Dataset")
 uploaded_file = st.sidebar.file_uploader("Upload CSV File", type="csv")
 
 if uploaded_file is not None:
@@ -62,49 +65,51 @@ if uploaded_file is not None:
     X = df_clean.select_dtypes(include=np.number).drop(columns=["AQI_PM2.5"])
     y = df_clean["AQI_PM2.5"]
 
-    # Home Page
+    def remove_outliers_iqr(data):
+        Q1 = data.quantile(0.25)
+        Q3 = data.quantile(0.75)
+        IQR = Q3 - Q1
+        return data[~((data < (Q1 - 1.5 * IQR)) | (data > (Q3 + 1.5 * IQR))).any(axis=1)]
+
+    df_clean = remove_outliers_iqr(df_clean)
+    X = df_clean.select_dtypes(include=np.number).drop(columns=["AQI_PM2.5"])
+    y = df_clean["AQI_PM2.5"]
+
+    # HOME
     if page == "Home":
-        st.subheader("Preview of Data")
+        st.subheader("Dataset Preview")
         st.dataframe(df.head())
 
-    # EDA Page
+    # EDA
     elif page == "EDA":
-        st.subheader("Distribution Plots")
+        st.subheader("Distribution of Variables")
         valid_cols = [col for col in X.columns if X[col].notna().sum() > 0]
         n_cols = 5
         n_rows = int(np.ceil(len(valid_cols) / n_cols))
         fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows))
         axes = axes.flatten()
-
         for idx, col in enumerate(valid_cols):
             sns.histplot(X[col].dropna(), kde=True, bins=50, ax=axes[idx])
             axes[idx].set_title(f'Distribution of {col}')
-            axes[idx].set_xlabel(col)
-            axes[idx].set_ylabel('Frequency')
-
         for i in range(len(valid_cols), len(axes)):
             fig.delaxes(axes[i])
-
         st.pyplot(fig)
 
         st.subheader("Boxplots by AQI Category")
         fig2, axes2 = plt.subplots(1, 3, figsize=(24, 6))
         sns.boxplot(x="AQI_Category", y="PM2.5", data=df, ax=axes2[0])
-        axes2[0].set_title("PM2.5 by AQI Category")
         sns.boxplot(x="AQI_Category", y="Benzene", data=df, ax=axes2[1])
-        axes2[1].set_title("Benzene by AQI Category")
         sns.boxplot(x="AQI_Category", y="Toluene", data=df, ax=axes2[2])
-        axes2[2].set_title("Toluene by AQI Category")
         st.pyplot(fig2)
 
-        st.subheader("Pairplot")
+        st.subheader("Pairplot of Important Features")
         selected_features = ["PM2.5", "SO2", "NO2", "WS", "AQI_PM2.5"]
         pairplot_fig = sns.pairplot(df[selected_features], hue="AQI_Category")
         st.pyplot(pairplot_fig)
 
-    # Feature Importance Page
+    # FEATURE IMPORTANCE
     elif page == "Feature Importance":
-        st.subheader("Feature Importance (Random Forest)")
+        st.subheader("Feature Importance using Random Forest")
         model = RandomForestRegressor()
         model.fit(X, y)
         importance = model.feature_importances_
@@ -112,9 +117,9 @@ if uploaded_file is not None:
         st.dataframe(importance_df)
         st.bar_chart(importance_df.set_index("Feature"))
 
-    # PCA Page
+    # PCA
     elif page == "PCA":
-        st.subheader("Principal Component Analysis")
+        st.subheader("PCA - Principal Component Analysis")
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X)
         pca_df = pd.DataFrame(X_pca, columns=["PC1", "PC2"])
@@ -122,9 +127,9 @@ if uploaded_file is not None:
         fig2 = px.scatter(pca_df, x="PC1", y="PC2", color="AQI_Category")
         st.plotly_chart(fig2)
 
-    # Model Comparison Page
+    # MODEL COMPARISON
     elif page == "Model Comparison":
-        st.subheader("Model Comparison")
+        st.subheader("Model Comparison and Evaluation")
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
         models = {
@@ -139,14 +144,17 @@ if uploaded_file is not None:
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
             st.write(f"### {name} Results")
-            rmse = mean_squared_error(y_test, y_pred, squared=False)
-            mae = mean_absolute_error(y_test, y_pred)
-            r2 = r2_score(y_test, y_pred)
-            st.write("RMSE: {:.2f}".format(rmse))
-            st.write("MAE: {:.2f}".format(mae))
-            st.write("R²: {:.2f}".format(r2))
+            st.write("RMSE: {:.2f}".format(mean_squared_error(y_test, y_pred, squared=False)))
+            st.write("MAE: {:.2f}".format(mean_absolute_error(y_test, y_pred)))
+            st.write("R²: {:.2f}".format(r2_score(y_test, y_pred)))
             fig_res = px.scatter(x=y_test, y=y_pred, labels={"x": "Actual AQI", "y": "Predicted AQI"}, title=f"{name} Residual Plot")
             st.plotly_chart(fig_res)
+
+        st.subheader("Download Cleaned Data")
+        csv = df_clean.to_csv(index=False)
+        b64 = base64.b64encode(csv.encode()).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="cleaned_data.csv">Download Cleaned Dataset</a>'
+        st.markdown(href, unsafe_allow_html=True)
 
 else:
     st.warning("Please upload a CSV file using the sidebar.")
