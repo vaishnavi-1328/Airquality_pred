@@ -71,6 +71,7 @@ if uploaded_file is not None:
         return data[filter_mask]
 
     df_clean = remove_outliers_iqr(df)
+    df_clean = df_clean.dropna(subset=["AQI_PM2.5"])
     X = df_clean.select_dtypes(include=np.number).drop(columns=["AQI_PM2.5"])
     y = df_clean["AQI_PM2.5"]
 
