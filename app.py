@@ -1,186 +1,123 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
+import plotly.express as px
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import GaussianNB
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.decomposition import PCA
-from sklearn.metrics import accuracy_score, classification_report, ConfusionMatrixDisplay, confusion_matrix
-import plotly.express as px
-from scipy.stats import zscore
+from sklearn.metrics import classification_report, confusion_matrix
 
-st.set_page_config(page_title="AQI ML App", layout="wide")
-st.title("Air Quality Index (AQI) ML App with Full EDA, Models, and Residuals")
+st.set_page_config(layout="wide")
+st.title("🌫️ Air Quality Index (AQI) Streamlit Dashboard")
 
-uploaded_file = st.sidebar.file_uploader("\U0001F4C5 Upload a CSV File", type="csv")
-
+# File upload
+uploaded_file = st.file_uploader("📂 Upload a CSV file", type=["csv"])
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    tabs = st.tabs(["\U0001F4CA Overview", "\U0001F4C8 EDA", "\u2699\ufe0f Preprocessing", "\U0001F50D PCA", "\U0001F916 Models", "\U0001F4C9 Results"])
+    st.success("✅ File uploaded successfully!")
 
-    with tabs[0]:
-        st.header("\U0001F4CA Project Overview")
-        st.write("This app calculates AQI from PM2.5, performs EDA, PCA, trains ML models, and visualizes residuals.")
-        st.dataframe(df.head())
+    st.subheader("🔎 Data Preview")
+    st.dataframe(df.head())
 
-    with tabs[1]:
-        st.header("\U0001F4C8 EDA: Univariate, Bivariate, Multivariate")
-        numeric_cols = df.select_dtypes(include=np.number).columns
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    object_cols = df.select_dtypes(include='object').columns.tolist()
 
-        st.subheader("1️⃣ Univariate Histograms (Grid View)")
-        valid_cols = [col for col in numeric_cols if df[col].notna().sum() > 0]
-        n_cols = 4
-        n_rows = (len(valid_cols) + n_cols - 1) // n_cols
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows))
-        axes = axes.flatten()
-        for idx, col in enumerate(valid_cols):
-            sns.histplot(df[col].dropna(), kde=True, bins=50, ax=axes[idx])
-            axes[idx].set_title(f"Distribution of {col}")
-            axes[idx].set_xlabel(col)
-            axes[idx].set_ylabel("Frequency")
-        for i in range(len(valid_cols), len(axes)):
-            fig.delaxes(axes[i])
-        plt.tight_layout()
-        st.pyplot(fig)
+    # Outlier Removal
+    st.subheader("🚫 Outlier Removal")
+    for col in numeric_cols:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        df = df[(df[col] >= Q1 - 1.5 * IQR) & (df[col] <= Q3 + 1.5 * IQR)]
+    st.write("✅ Outliers removed using IQR method.")
 
-        st.subheader("2️⃣ Bivariate: Scatter with PM2.5")
-        for col in numeric_cols:
-            if col != "PM2.5":
-                fig, ax = plt.subplots()
-                sns.scatterplot(x=df[col], y=df["PM2.5"], ax=ax)
-                ax.set_title(f"PM2.5 vs {col}")
-                st.pyplot(fig)
+    # Univariate Analysis
+    st.subheader("📊 Univariate Analysis")
+    selected_col = st.selectbox("Select a variable", numeric_cols)
+    fig_uni, ax_uni = plt.subplots()
+    sns.histplot(df[selected_col], kde=True, ax=ax_uni)
+    st.pyplot(fig_uni)
 
-        st.subheader("3️⃣ Multivariate: Correlation Heatmap")
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
-        st.pyplot(fig)
+    # Pairplot (Bivariate)
+    st.subheader("📈 Bivariate Analysis (Pairplot)")
+    pair_cols = st.multiselect("Choose variables for pairplot", numeric_cols, default=numeric_cols[:5])
+    if len(pair_cols) >= 2:
+        pairplot_fig = sns.pairplot(df[pair_cols])
+        st.pyplot(pairplot_fig)
+    else:
+        st.warning("Please select at least two variables.")
 
-        if len(numeric_cols) <= 6:
-            st.subheader("Pairplot")
-            fig = sns.pairplot(df[numeric_cols])
-            st.pyplot(fig)
+    # Boxplots by Category
+    st.subheader("📦 Multivariate Analysis: Boxplots by AQI Category")
+    if object_cols:
+        cat_col = st.selectbox("Select AQI Category column", object_cols)
+        box_cols = st.multiselect("Select numeric features for boxplots", numeric_cols, default=numeric_cols[:3])
+        for bcol in box_cols:
+            fig_box, ax_box = plt.subplots()
+            sns.boxplot(data=df, x=cat_col, y=bcol, ax=ax_box)
+            ax_box.set_title(f"{bcol} by {cat_col}")
+            ax_box.tick_params(axis='x', rotation=45)
+            st.pyplot(fig_box)
+    else:
+        st.warning("No categorical column found for AQI categories.")
 
-    breakpoints_pm25 = [(0.0, 9.0, 0, 50), (9.1, 35.4, 51, 100), (35.5, 55.4, 101, 150),
-                        (55.5, 125.4, 151, 200), (125.5, 225.4, 201, 300), (225.5, 500.4, 301, 500)]
-
-    def calculate_aqi(pm25):
-        for bp_lo, bp_hi, i_lo, i_hi in breakpoints_pm25:
-            if bp_lo <= pm25 <= bp_hi:
-                return round(((i_hi - i_lo) / (bp_hi - bp_lo)) * (pm25 - bp_lo) + i_lo)
-        return None
-
-    def categorize_aqi(aqi):
-        if aqi is None:
-            return "Unknown"
-        elif aqi <= 50:
-            return "Good"
-        elif aqi <= 100:
-            return "Moderate"
-        elif aqi <= 150:
-            return "Unhealthy for Sensitive Groups"
-        elif aqi <= 200:
-            return "Unhealthy"
-        elif aqi <= 300:
-            return "Very Unhealthy"
-        else:
-            return "Hazardous"
-
-    df['AQI_PM2.5'] = df['PM2.5'].apply(calculate_aqi)
-    df['AQI_Category'] = df['AQI_PM2.5'].apply(categorize_aqi)
-
-    with tabs[2]:
-        st.header("\u2699\ufe0f Preprocessing")
-        if 'Benzene' in df.columns and 'Toluene' in df.columns:
-            df['pollutionRatio'] = df['Benzene'] / (df['Toluene'] + 1e-5)
-        if 'NO' in df.columns and 'WS' in df.columns:
-            df['NO*WS'] = df['NO'] * df['WS']
-        if 'SO2' in df.columns and 'TEMP' in df.columns:
-            df['SO2*TEMP'] = df['SO2'] * df['TEMP']
-        if 'O3' in df.columns and 'RH' in df.columns:
-            df['O3*RH'] = df['O3'] * df['RH']
-        if 'NO2' in df.columns and 'CO' in df.columns:
-            df['NO2/CO'] = df['NO2'] / (df['CO'] + 1e-5)
-        if 'NOx' in df.columns and 'NO' in df.columns:
-            df['NOx/NO'] = df['NOx'] / (df['NO'] + 1e-5)
-
-        df = df.dropna()
-        z = np.abs(zscore(df.select_dtypes(include=np.number)))
-        df = df[(z < 3).all(axis=1)]
-        st.success(f"Remaining after outlier removal: {len(df)} rows")
-
-    y = df['AQI_Category']
-    le = LabelEncoder()
-    y_encoded = le.fit_transform(y)
-    X = df.drop(columns=['AQI_PM2.5', 'AQI_Category'])
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    with tabs[3]:
-        st.header("\U0001F50D PCA")
+    # PCA
+    st.subheader("🌐 PCA - Principal Component Analysis")
+    if len(numeric_cols) >= 2:
+        scaled = StandardScaler().fit_transform(df[numeric_cols])
         pca = PCA(n_components=2)
-        X_pca = pca.fit_transform(X_scaled)
-        pca_df = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
-        pca_df['AQI_Category'] = y.values
-        fig = px.scatter(pca_df, x='PC1', y='PC2', color='AQI_Category', title="PCA 2D")
-        st.plotly_chart(fig)
+        components = pca.fit_transform(scaled)
+        pca_df = pd.DataFrame(components, columns=["PC1", "PC2"])
+        fig_pca = px.scatter(pca_df, x="PC1", y="PC2", title="PCA - 2D Projection")
+        st.plotly_chart(fig_pca)
+    else:
+        st.warning("Need at least 2 numeric columns for PCA.")
 
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_encoded, test_size=0.3, random_state=42)
-    residuals_dict = {}
-    predictions_dict = {}
+    # Modeling
+    st.subheader("🧠 Model Training and Evaluation")
+    target = st.selectbox("Select Target Variable", df.columns)
+    features = st.multiselect("Select Feature Variables", [col for col in df.columns if col != target], default=numeric_cols)
 
-    with tabs[4]:
-        st.header("\U0001F916 Models")
+    if len(features) > 0:
+        X = df[features]
+        y = df[target]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
         models = {
             "Naive Bayes": GaussianNB(),
-            "Decision Tree": DecisionTreeClassifier(random_state=42),
-            "Random Forest": RandomForestClassifier(random_state=42),
+            "Decision Tree": DecisionTreeClassifier(),
+            "Random Forest": RandomForestClassifier(),
             "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
         }
-        model_scores = {}
+
         for name, model in models.items():
+            st.subheader(f"🔍 {name}")
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
-            predictions_dict[name] = y_pred
-            acc = accuracy_score(y_test, y_pred)
-            model_scores[name] = acc
-            st.subheader(f"{name} Accuracy: {acc:.2f}")
-            st.text(classification_report(y_test, y_pred, target_names=le.classes_))
 
-            cm = confusion_matrix(y_test, y_pred)
-            fig, ax = plt.subplots(figsize=(8, 6))
-            disp = ConfusionMatrixDisplay(cm, display_labels=le.classes_)
-            disp.plot(ax=ax, cmap='viridis')
-            plt.xticks(rotation=30, ha='right', fontsize=8)
-            plt.yticks(fontsize=8)
-            plt.title(f"{name} Confusion Matrix")
-            st.pyplot(fig)
+            st.text("Confusion Matrix")
+            st.write(confusion_matrix(y_test, y_pred))
 
-            if name in ["Decision Tree", "Random Forest", "XGBoost"]:
-                residuals_dict[name] = y_test - y_pred
+            st.text("Classification Report")
+            st.text(classification_report(y_test, y_pred))
 
-    with tabs[5]:
-        st.header("\U0001F4C9 Results Summary")
-        st.subheader("Accuracy Comparison")
-        st.bar_chart(pd.Series(model_scores))
-
-        st.subheader("Feature Importances (Random Forest)")
-        rf = models['Random Forest']
-        importance = pd.Series(rf.feature_importances_, index=X.columns)
-        st.bar_chart(importance.sort_values(ascending=False))
-
-        st.subheader("Residual Plots")
-        for model_name, residuals in residuals_dict.items():
-            fig, ax = plt.subplots()
-            sns.histplot(residuals, kde=True, bins=20, ax=ax)
-            ax.set_title(f"{model_name} Residuals")
-            ax.set_xlabel("Residual = True - Predicted")
-            st.pyplot(fig)
+            # Residual Plot (for numeric targets)
+            if np.issubdtype(y.dtype, np.number):
+                residuals = y_test - y_pred
+                fig_resid, ax_resid = plt.subplots()
+                ax_resid.scatter(y_pred, residuals)
+                ax_resid.axhline(0, color='red', linestyle='--')
+                ax_resid.set_title(f"{name} - Residual Plot")
+                ax_resid.set_xlabel("Predicted")
+                ax_resid.set_ylabel("Residuals")
+                st.pyplot(fig_resid)
 
 else:
-    st.warning("Please upload a CSV file with PM2.5 and related air quality columns.")
+    st.warning("📁 Please upload a CSV file to begin.")
