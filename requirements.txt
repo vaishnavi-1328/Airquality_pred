@@ -7,3 +7,5 @@ scikit-learn
 xgboost
 plotly
 scipy
+streamlit-pdf-viewer
+torch
