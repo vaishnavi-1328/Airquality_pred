@@ -35,7 +35,7 @@ st.title("Air Quality Index (AQI) Dashboard")
 st.markdown("---")
 
 # Remove "Documents" tab
-tabs = st.tabs(["Home","Feature Importance", "EDA", "PCA", "Model Metrics", "Model Comparison"])
+tabs = st.tabs(["Home","Feature Importance", "EDA", "PCA", "Classification Models", "Regression Models"])
 st.sidebar.title("Upload Dataset")
 uploaded_file = st.sidebar.file_uploader("Upload CSV File", type="csv")
 
@@ -86,6 +86,41 @@ with tabs[0]:
 # --- Content Dependent on CSV Upload ---
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
+    import pandas as pd
+    from scipy.spatial import cKDTree
+
+    # Load datasets
+    df1 = pd.read_csv('AQI_2.csv', encoding='latin-1')
+
+    # Rename df2 columns to avoid conflicts
+    df2=df.copy()
+    for i in df2.columns:
+        if i in df2.columns:
+            df2.rename(columns={i: i+"_matched"}, inplace=True)
+    
+    # Match using PM2.5
+    tree = cKDTree(df2[['PM2.5_matched']].values)
+    distances, indices = tree.query(df1[['PM2.5']].values, k=1)
+
+    # Match rows from df2
+    matched_df2 = df2.iloc[indices].reset_index(drop=True)
+
+    # Concatenate
+    merged_df = pd.concat([df1.reset_index(drop=True), matched_df2], axis=1)
+
+    # Identify and drop matched columns that duplicate those in df1
+    # (e.g., PM2.5 and PM2.5_matched are same info)
+    cols_to_drop = []
+    for col in df1.columns:
+        matched_col = col + '_matched'
+        if matched_col in merged_df.columns:
+            cols_to_drop.append(matched_col)
+
+    # Drop the duplicate matched columns
+    merged_df = merged_df.drop(columns=cols_to_drop)
+    
+
+    
     
 
     breakpoints_pm25 = [
@@ -238,10 +273,14 @@ if uploaded_file is not None:
     with tabs[0]:
         # The PDF is already displayed outside the if block.
         # Now display the dataframe head since the file is uploaded.
-        st.subheader("Dataset Preview") # Update subheader now that data is loaded
+        st.subheader("Dataset 1")
         st.dataframe(df.head())
+        st.subheader("Dataset 2")
+        st.dataframe(df1.head())
+        st.subheader("Merged Dataset:")
+        st.dataframe(merged_df.head())
         st.subheader("Dataset description")
-        st.dataframe(df.describe())
+        st.dataframe(merged_df.describe())
 
     # FEATURE IMPORTANCE
     with tabs[1]:
@@ -430,6 +469,12 @@ with tabs[5]:
             X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(
                 X_reg, y_reg, test_size=0.3, random_state=42)
             
+            # Feature scaling for neural network
+            from sklearn.preprocessing import StandardScaler
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train_reg)
+            X_test_scaled = scaler.transform(X_test_reg)
+            
             # Define regression models
             reg_models = {
                 "Linear Regression": LinearRegression(),
@@ -438,6 +483,27 @@ with tabs[5]:
                 "Gradient Boosting Regressor": GradientBoostingRegressor(random_state=42)
             }
             
+            # Import and create Neural Network model
+            from sklearn.neural_network import MLPRegressor
+            
+            # Add Neural Network to the models
+            nn_model = MLPRegressor(
+                hidden_layer_sizes=(100, 50),  # Two hidden layers with 100 and 50 neurons
+                activation='relu',
+                solver='adam',
+                alpha=0.001,
+                batch_size='auto',
+                learning_rate='adaptive',
+                max_iter=2000,
+                early_stopping=True,
+                validation_fraction=0.1,
+                random_state=42,
+                verbose=False
+            )
+            
+            # Add neural network to the model dictionary
+            reg_models["Neural Network"] = nn_model
+            
             # Create a DataFrame to store results
             results_df = pd.DataFrame(columns=["Model", "RMSE", "MAE", "R²"])
             
@@ -445,9 +511,13 @@ with tabs[5]:
                 # Create a subheader for each model
                 st.markdown(f"### {name}")
                 
-                # Fit and predict
-                model.fit(X_train_reg, y_train_reg)
-                y_pred_reg = model.predict(X_test_reg)
+                # Fit and predict (use scaled data for Neural Network)
+                if name == "Neural Network":
+                    model.fit(X_train_scaled, y_train_reg)
+                    y_pred_reg = model.predict(X_test_scaled)
+                else:
+                    model.fit(X_train_reg, y_train_reg)
+                    y_pred_reg = model.predict(X_test_reg)
                 
                 # Calculate metrics
                 rmse = np.sqrt(mean_squared_error(y_test_reg, y_pred_reg))
@@ -505,6 +575,23 @@ with tabs[5]:
                     
                     # Bar chart for feature importance
                     st.bar_chart(imp_df.set_index('Feature'))
+                
+                # For Neural Network, show loss curve
+                if name == "Neural Network" and hasattr(model, 'loss_curve_'):
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    ax.plot(model.loss_curve_)
+                    ax.set_xlabel('Iterations')
+                    ax.set_ylabel('Loss')
+                    ax.set_title('Neural Network Training Loss Curve')
+                    st.pyplot(fig)
+                    
+                    if hasattr(model, 'validation_scores_'):
+                        fig, ax = plt.subplots(figsize=(8, 6))
+                        ax.plot(model.validation_scores_)
+                        ax.set_xlabel('Iterations')
+                        ax.set_ylabel('Validation Score')
+                        ax.set_title('Neural Network Validation Score')
+                        st.pyplot(fig)
                 
                 st.markdown("---")  # Add separator between models
             
