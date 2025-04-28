@@ -439,188 +439,188 @@ if uploaded_file is not None:
 
 
 # Add "Regression Models" to your tabs list
-with tabs[5]:
-    st.subheader("Regression Models for PM2.5 Prediction")
-    df_clean = X.copy()
-    # Separate features and target for regression
-    if 'PM2.5' in df_clean.columns:
-        # Create regression dataset
-        y_reg = df_clean['PM2.5']
-        
-        # Use base columns from df_clean instead of trying to use X's columns which have polynomial features
-        X_reg_base = df_clean.select_dtypes(include=np.number).drop(['PM2.5', 'AQI_PM2.5'], axis=1, errors='ignore')
-        
-        # Create polynomial features for regression model
-        poly = PolynomialFeatures(degree=2, include_bias=False, interaction_only=False)
-        X_reg_poly = poly.fit_transform(X_reg_base)
-        poly_feature_names = poly.get_feature_names_out(X_reg_base.columns)
-        
-        # Create DataFrame with polynomial features
-        X_reg = pd.DataFrame(X_reg_poly, columns=poly_feature_names, index=X_reg_base.index)
-        
-        # Check if dataset is valid
-        if X_reg.empty:
-            st.warning("Not enough features for regression modeling after filtering.")
-        else:
-            # Display feature set info
-            st.write(f"Using {X_reg.shape[1]} features for regression (including polynomial features)")
+    with tabs[5]:
+        st.subheader("Regression Models for PM2.5 Prediction")
+        df_clean = X.copy()
+        # Separate features and target for regression
+        if 'PM2.5' in df_clean.columns:
+            # Create regression dataset
+            y_reg = df_clean['PM2.5']
             
-            # Split the data
-            X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(
-                X_reg, y_reg, test_size=0.3, random_state=42)
+            # Use base columns from df_clean instead of trying to use X's columns which have polynomial features
+            X_reg_base = df_clean.select_dtypes(include=np.number).drop(['PM2.5', 'AQI_PM2.5'], axis=1, errors='ignore')
             
-            # Feature scaling for neural network
-            from sklearn.preprocessing import StandardScaler
-            scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train_reg)
-            X_test_scaled = scaler.transform(X_test_reg)
+            # Create polynomial features for regression model
+            poly = PolynomialFeatures(degree=2, include_bias=False, interaction_only=False)
+            X_reg_poly = poly.fit_transform(X_reg_base)
+            poly_feature_names = poly.get_feature_names_out(X_reg_base.columns)
             
-            # Define regression models
-            reg_models = {
-                "Linear Regression": LinearRegression(),
-                "Random Forest Regressor": RandomForestRegressor(random_state=42),
-                "Decision Tree Regressor": DecisionTreeRegressor(random_state=42),
-                "Gradient Boosting Regressor": GradientBoostingRegressor(random_state=42)
-            }
+            # Create DataFrame with polynomial features
+            X_reg = pd.DataFrame(X_reg_poly, columns=poly_feature_names, index=X_reg_base.index)
             
-            # Import and create Neural Network model
-            from sklearn.neural_network import MLPRegressor
-            
-            # Add Neural Network to the models
-            nn_model = MLPRegressor(
-                hidden_layer_sizes=(100, 50),  # Two hidden layers with 100 and 50 neurons
-                activation='relu',
-                solver='adam',
-                alpha=0.001,
-                batch_size='auto',
-                learning_rate='adaptive',
-                max_iter=2000,
-                early_stopping=True,
-                validation_fraction=0.1,
-                random_state=42,
-                verbose=False
-            )
-            
-            # Add neural network to the model dictionary
-            reg_models["Neural Network"] = nn_model
-            
-            # Create a DataFrame to store results
-            results_df = pd.DataFrame(columns=["Model", "RMSE", "MAE", "R²"])
-            
-            for name, model in reg_models.items():
-                # Create a subheader for each model
-                st.markdown(f"### {name}")
+            # Check if dataset is valid
+            if X_reg.empty:
+                st.warning("Not enough features for regression modeling after filtering.")
+            else:
+                # Display feature set info
+                st.write(f"Using {X_reg.shape[1]} features for regression (including polynomial features)")
                 
-                # Fit and predict (use scaled data for Neural Network)
-                if name == "Neural Network":
-                    model.fit(X_train_scaled, y_train_reg)
-                    y_pred_reg = model.predict(X_test_scaled)
-                else:
-                    model.fit(X_train_reg, y_train_reg)
-                    y_pred_reg = model.predict(X_test_reg)
+                # Split the data
+                X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(
+                    X_reg, y_reg, test_size=0.3, random_state=42)
                 
-                # Calculate metrics
-                rmse = np.sqrt(mean_squared_error(y_test_reg, y_pred_reg))
-                mae = mean_absolute_error(y_test_reg, y_pred_reg)
-                r2 = r2_score(y_test_reg, y_pred_reg)
+                # Feature scaling for neural network
+                from sklearn.preprocessing import StandardScaler
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(X_train_reg)
+                X_test_scaled = scaler.transform(X_test_reg)
                 
-                # Display metrics
-                st.write(f"**RMSE:** {rmse:.2f}")
-                st.write(f"**MAE:** {mae:.2f}")
-                st.write(f"**R² Score:** {r2:.2f}")
+                # Define regression models
+                reg_models = {
+                    "Linear Regression": LinearRegression(),
+                    "Random Forest Regressor": RandomForestRegressor(random_state=42),
+                    "Decision Tree Regressor": DecisionTreeRegressor(random_state=42),
+                    "Gradient Boosting Regressor": GradientBoostingRegressor(random_state=42)
+                }
                 
-                # Add to results DataFrame
-                results_df = pd.concat([results_df, pd.DataFrame({
-                    "Model": [name],
-                    "RMSE": [rmse],
-                    "MAE": [mae],
-                    "R²": [r2]
-                })], ignore_index=True)
+                # Import and create Neural Network model
+                from sklearn.neural_network import MLPRegressor
                 
-                # Create scatter plot of actual vs predicted values
-                fig, ax = plt.subplots(figsize=(8, 6))
-                ax.scatter(y_test_reg, y_pred_reg, alpha=0.5)
-                ax.plot([y_test_reg.min(), y_test_reg.max()], 
-                        [y_test_reg.min(), y_test_reg.max()], 
-                        'k--', lw=2)
-                ax.set_xlabel('Actual PM2.5')
-                ax.set_ylabel('Predicted PM2.5')
-                ax.set_title(f'{name}: Actual vs Predicted PM2.5')
-                st.pyplot(fig)
+                # Add Neural Network to the models
+                nn_model = MLPRegressor(
+                    hidden_layer_sizes=(100, 50),  # Two hidden layers with 100 and 50 neurons
+                    activation='relu',
+                    solver='adam',
+                    alpha=0.001,
+                    batch_size='auto',
+                    learning_rate='adaptive',
+                    max_iter=2000,
+                    early_stopping=True,
+                    validation_fraction=0.1,
+                    random_state=42,
+                    verbose=False
+                )
                 
-                # Feature importance (if available)
-                if hasattr(model, 'feature_importances_'):
-                    # Get feature importance
-                    importances = model.feature_importances_
+                # Add neural network to the model dictionary
+                reg_models["Neural Network"] = nn_model
+                
+                # Create a DataFrame to store results
+                results_df = pd.DataFrame(columns=["Model", "RMSE", "MAE", "R²"])
+                
+                for name, model in reg_models.items():
+                    # Create a subheader for each model
+                    st.markdown(f"### {name}")
                     
-                    # Handle potential issues with too many features
-                    # Just take top 20 features if there are more than 20
-                    if len(importances) > 20:
-                        indices = np.argsort(importances)[-20:]
-                        top_features = X_reg.columns[indices]
-                        top_importances = importances[indices]
-                        
-                        imp_df = pd.DataFrame({
-                            'Feature': top_features,
-                            'Importance': top_importances
-                        }).sort_values('Importance', ascending=False)
+                    # Fit and predict (use scaled data for Neural Network)
+                    if name == "Neural Network":
+                        model.fit(X_train_scaled, y_train_reg)
+                        y_pred_reg = model.predict(X_test_scaled)
                     else:
-                        imp_df = pd.DataFrame({
-                            'Feature': X_reg.columns,
-                            'Importance': importances
-                        }).sort_values('Importance', ascending=False)
+                        model.fit(X_train_reg, y_train_reg)
+                        y_pred_reg = model.predict(X_test_reg)
                     
-                    st.write("**Top Feature Importance:**")
-                    st.dataframe(imp_df)
+                    # Calculate metrics
+                    rmse = np.sqrt(mean_squared_error(y_test_reg, y_pred_reg))
+                    mae = mean_absolute_error(y_test_reg, y_pred_reg)
+                    r2 = r2_score(y_test_reg, y_pred_reg)
                     
-                    # Bar chart for feature importance
-                    st.bar_chart(imp_df.set_index('Feature'))
-                
-                # For Neural Network, show loss curve
-                if name == "Neural Network" and hasattr(model, 'loss_curve_'):
+                    # Display metrics
+                    st.write(f"**RMSE:** {rmse:.2f}")
+                    st.write(f"**MAE:** {mae:.2f}")
+                    st.write(f"**R² Score:** {r2:.2f}")
+                    
+                    # Add to results DataFrame
+                    results_df = pd.concat([results_df, pd.DataFrame({
+                        "Model": [name],
+                        "RMSE": [rmse],
+                        "MAE": [mae],
+                        "R²": [r2]
+                    })], ignore_index=True)
+                    
+                    # Create scatter plot of actual vs predicted values
                     fig, ax = plt.subplots(figsize=(8, 6))
-                    ax.plot(model.loss_curve_)
-                    ax.set_xlabel('Iterations')
-                    ax.set_ylabel('Loss')
-                    ax.set_title('Neural Network Training Loss Curve')
+                    ax.scatter(y_test_reg, y_pred_reg, alpha=0.5)
+                    ax.plot([y_test_reg.min(), y_test_reg.max()], 
+                            [y_test_reg.min(), y_test_reg.max()], 
+                            'k--', lw=2)
+                    ax.set_xlabel('Actual PM2.5')
+                    ax.set_ylabel('Predicted PM2.5')
+                    ax.set_title(f'{name}: Actual vs Predicted PM2.5')
                     st.pyplot(fig)
                     
-                    if hasattr(model, 'validation_scores_'):
+                    # Feature importance (if available)
+                    if hasattr(model, 'feature_importances_'):
+                        # Get feature importance
+                        importances = model.feature_importances_
+                        
+                        # Handle potential issues with too many features
+                        # Just take top 20 features if there are more than 20
+                        if len(importances) > 20:
+                            indices = np.argsort(importances)[-20:]
+                            top_features = X_reg.columns[indices]
+                            top_importances = importances[indices]
+                            
+                            imp_df = pd.DataFrame({
+                                'Feature': top_features,
+                                'Importance': top_importances
+                            }).sort_values('Importance', ascending=False)
+                        else:
+                            imp_df = pd.DataFrame({
+                                'Feature': X_reg.columns,
+                                'Importance': importances
+                            }).sort_values('Importance', ascending=False)
+                        
+                        st.write("**Top Feature Importance:**")
+                        st.dataframe(imp_df)
+                        
+                        # Bar chart for feature importance
+                        st.bar_chart(imp_df.set_index('Feature'))
+                    
+                    # For Neural Network, show loss curve
+                    if name == "Neural Network" and hasattr(model, 'loss_curve_'):
                         fig, ax = plt.subplots(figsize=(8, 6))
-                        ax.plot(model.validation_scores_)
+                        ax.plot(model.loss_curve_)
                         ax.set_xlabel('Iterations')
-                        ax.set_ylabel('Validation Score')
-                        ax.set_title('Neural Network Validation Score')
+                        ax.set_ylabel('Loss')
+                        ax.set_title('Neural Network Training Loss Curve')
                         st.pyplot(fig)
+                        
+                        if hasattr(model, 'validation_scores_'):
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            ax.plot(model.validation_scores_)
+                            ax.set_xlabel('Iterations')
+                            ax.set_ylabel('Validation Score')
+                            ax.set_title('Neural Network Validation Score')
+                            st.pyplot(fig)
+                    
+                    st.markdown("---")  # Add separator between models
                 
-                st.markdown("---")  # Add separator between models
-            
-            # Model comparison
-            st.subheader("Regression Model Comparison")
-            
-            # Sort by RMSE (lower is better)
-            results_df_sorted = results_df.sort_values('RMSE')
-            st.dataframe(results_df_sorted)
-            
-            # Create comparison bar charts
-            fig_comp, axes = plt.subplots(1, 3, figsize=(18, 5))
-            
-            # RMSE comparison (lower is better)
-            sns.barplot(x='Model', y='RMSE', data=results_df_sorted, ax=axes[0])
-            axes[0].set_title('RMSE Comparison (Lower is Better)')
-            axes[0].set_xticklabels(axes[0].get_xticklabels(), rotation=45, ha='right')
-            
-            # MAE comparison (lower is better)
-            sns.barplot(x='Model', y='MAE', data=results_df_sorted, ax=axes[1])
-            axes[1].set_title('MAE Comparison (Lower is Better)')
-            axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=45, ha='right')
-            
-            # R² comparison (higher is better)
-            sns.barplot(x='Model', y='R²', data=results_df_sorted.sort_values('R²', ascending=False), ax=axes[2])
-            axes[2].set_title('R² Comparison (Higher is Better)')
-            axes[2].set_xticklabels(axes[2].get_xticklabels(), rotation=45, ha='right')
-            
-            plt.tight_layout()
-            st.pyplot(fig_comp)
-    else:
-        st.error("PM2.5 column not found in the dataset. Cannot perform regression modeling.")
+                # Model comparison
+                st.subheader("Regression Model Comparison")
+                
+                # Sort by RMSE (lower is better)
+                results_df_sorted = results_df.sort_values('RMSE')
+                st.dataframe(results_df_sorted)
+                
+                # Create comparison bar charts
+                fig_comp, axes = plt.subplots(1, 3, figsize=(18, 5))
+                
+                # RMSE comparison (lower is better)
+                sns.barplot(x='Model', y='RMSE', data=results_df_sorted, ax=axes[0])
+                axes[0].set_title('RMSE Comparison (Lower is Better)')
+                axes[0].set_xticklabels(axes[0].get_xticklabels(), rotation=45, ha='right')
+                
+                # MAE comparison (lower is better)
+                sns.barplot(x='Model', y='MAE', data=results_df_sorted, ax=axes[1])
+                axes[1].set_title('MAE Comparison (Lower is Better)')
+                axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=45, ha='right')
+                
+                # R² comparison (higher is better)
+                sns.barplot(x='Model', y='R²', data=results_df_sorted.sort_values('R²', ascending=False), ax=axes[2])
+                axes[2].set_title('R² Comparison (Higher is Better)')
+                axes[2].set_xticklabels(axes[2].get_xticklabels(), rotation=45, ha='right')
+                
+                plt.tight_layout()
+                st.pyplot(fig_comp)
+        else:
+            st.error("PM2.5 column not found in the dataset. Cannot perform regression modeling.")
